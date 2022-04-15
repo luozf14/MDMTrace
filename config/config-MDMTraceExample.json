@@ -1,0 +1,14 @@
+// EXAMPLE CONFIG FILE FOR mdmExample.cpp
+// Sends 19F(9+) @10 MeV/A through the MDM,
+// at a variety of scattering angles
+{
+    "usingProbe"          : 1, //enable when using probe values for magnets, in this case, mdmDipoleField will be ignored.
+    "mdmAngle"            : 35.3,    // [deg]
+    "mdmDipoleField"      : 1243124124, // [Gauss cm]
+    "mdmDipoleProbe"      : 2475.0,
+    "mdmMultipoleProbe"   : 1608.0,
+    "scatteredMass"       : 12,   // [AMU]
+    "scatteredCharge"     : 5,    // [Charge number]
+    "scatteredEnergy"     : 17.16,  // [MeV]
+    "scatteredAngles"     : [35.3] // [deg]
+}
