@@ -2,9 +2,9 @@ MDM 6Li+12C @3.0 deg el scattering for test for RAYKIN1
  1  206    1    2    3    0    0
  71.09    2.0       0.       6.000      3.       
 DRIF
- 57.0
+ 63.5
 COLL
- 0.0        0.0       0.0      3.         3.
+ 0.0        0.0       0.0      2.27965         2.27965
 DRIF
  18.075
 POLE input multipole (use Bronson calibration of Bhall)
@@ -36,5 +36,5 @@ MULT (L=35 cm 9/7/93)
 COLL
  0.       -0.08      0.        29.61    20.21
 DRIF 
- 63.4
+ 96.13
 SENT  
