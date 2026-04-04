@@ -1,0 +1,13 @@
+// Example config for MDMFieldMapGenerator.
+// Run the generator from the build directory so rayin.dat is present there.
+{
+    "mdmDipoleProbe"      : 2475.0,
+    "mdmMultipoleProbe"   : 1608.0,
+    "relativeTolerance"   : 5.0e-3,
+    "absoluteTolerance"   : 1.0e-4,
+    "maxRefinementSteps"  : 8,
+    "maxNodesPerAxis"     : 257,
+    "outputDirectory"     : ".",
+    "multipoleOutput"     : "Multipole.bin",
+    "dipoleOutput"        : "Dipole.bin"
+}

@@ -96,7 +96,10 @@ C*IBM CALL ERRSET( 209, 256, 1 )
 C*IBM CALL ERRSET( 210, 256, 1 )
 C****
 c      open(unit=6,file='output.dat',status='unknown')
-      open(unit=5,file='rayin.dat',status='unknown')		
+      open(unit=5,file='rayin.dat',status='old',err=97)
+      GO TO 98
+   97 open(unit=5,file='dat/rayin.dat',status='old')		
+   98 CONTINUE
 C****
       IF(NCTL.EQ.1 .OR. NCTL.EQ.2) THEN
         EMASS = PMASS*931.48
