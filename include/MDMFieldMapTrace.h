@@ -11,6 +11,10 @@ class MDMFieldMapTrace {
 
   void LoadFieldMaps(const std::string& multipolePath = "Multipole.bin",
                      const std::string& dipolePath = "Dipole.bin");
+  void LoadFieldMaps(const std::string& multipolePath,
+                     const std::string& dipoleEntrancePath,
+                     const std::string& dipoleSectorPath,
+                     const std::string& dipoleExitPath);
 
   void SetMDMAngle(double angleDeg);
   double GetMDMAngle() const;
@@ -52,8 +56,12 @@ class MDMFieldMapTrace {
   bool requestedProbesSet_ = false;
 
   bool mapsLoaded_ = false;
+  bool usingSplitDipoleMaps_ = false;
   MDMFieldMap multipoleMap_;
   MDMFieldMap dipoleMap_;
+  MDMFieldMap dipoleEntranceMap_;
+  MDMFieldMap dipoleSectorMap_;
+  MDMFieldMap dipoleExitMap_;
 
   double firstWireX_ = 0.0;
   double firstWireY_ = 0.0;

@@ -35,6 +35,11 @@ int main(int argc, char* argv[]) {
     double scatteredEnergy = 0.0;
     std::string multipoleMapPath = "Multipole.bin";
     std::string dipoleMapPath = "Dipole.bin";
+    std::string dipoleEntranceMapPath = "DipoleEntrance.bin";
+    std::string dipoleSectorMapPath = "DipoleSector.bin";
+    std::string dipoleExitMapPath = "DipoleExit.bin";
+    bool hasSplitDipolePaths = false;
+    bool hasLegacyDipolePath = false;
     std::vector<double> scatteredAngles;
 
     for (Json::Value::iterator it = config.begin(); it != config.end(); ++it) {
@@ -63,6 +68,16 @@ int main(int argc, char* argv[]) {
         multipoleMapPath = it->asString();
       } else if (it.key().asString() == "dipoleMapPath") {
         dipoleMapPath = it->asString();
+        hasLegacyDipolePath = true;
+      } else if (it.key().asString() == "dipoleEntranceMapPath") {
+        dipoleEntranceMapPath = it->asString();
+        hasSplitDipolePaths = true;
+      } else if (it.key().asString() == "dipoleSectorMapPath") {
+        dipoleSectorMapPath = it->asString();
+        hasSplitDipolePaths = true;
+      } else if (it.key().asString() == "dipoleExitMapPath") {
+        dipoleExitMapPath = it->asString();
+        hasSplitDipolePaths = true;
       }
     }
 
@@ -76,7 +91,12 @@ int main(int argc, char* argv[]) {
     trace.SetScatteredMass(scatteredMass);
     trace.SetScatteredCharge(scatteredCharge);
     trace.SetScatteredEnergy(scatteredEnergy);
-    trace.LoadFieldMaps(multipoleMapPath, dipoleMapPath);
+    if (hasSplitDipolePaths || !hasLegacyDipolePath) {
+      trace.LoadFieldMaps(multipoleMapPath, dipoleEntranceMapPath,
+                          dipoleSectorMapPath, dipoleExitMapPath);
+    } else {
+      trace.LoadFieldMaps(multipoleMapPath, dipoleMapPath);
+    }
 
     for (const double angle : scatteredAngles) {
       trace.SetScatteredAngle(angle);

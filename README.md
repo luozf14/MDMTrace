@@ -13,7 +13,7 @@ This repository currently models one specific MDM configuration:
 The project has three main user-facing executables:
 
 - `MDMTraceExample`: runs the original Fortran RAYTRACE transport through the deck.
-- `MDMFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin` and `Dipole.bin`.
+- `MDMFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`.
 - `MDMFieldMapTraceExample`: transports ions through the generated field maps and compares against the original tracer output format.
 
 At the library level, the repo exposes three main C++ interfaces:
@@ -106,19 +106,22 @@ Input:
 
 Output:
 
-- refinement progress on stdout,
+- map grid summary on stdout,
 - `Multipole.bin`,
-- `Dipole.bin`
+- `DipoleEntrance.bin`,
+- `DipoleSector.bin`,
+- `DipoleExit.bin`
 
 Notes:
 
 - The generator ignores the second multipole because its field is off in the current deck.
-- The dipole generator may emit a best-effort map with a warning if the refinement target is not met before the configured limits.
+- The generator stores direct RAYTRACE field samples at grid nodes. It does not run interpolation-based refinement.
+- Grid spacing is derived from `rayin.dat` (`LF1/LU1/LF2/DG`), not from user-provided node counts.
 - Relative output paths are resolved against `outputDirectory`.
 
 ### `MDMFieldMapTraceExample`
 
-Purpose: transport ions through `Multipole.bin` and `Dipole.bin` while keeping drifts and collimators from the current deck, then print the same final result format as `MDMTraceExample`.
+Purpose: transport ions through `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` while keeping drifts and collimators from the current deck, then print the same final result format as `MDMTraceExample`.
 
 Syntax:
 
@@ -143,7 +146,7 @@ cd build
 Input:
 
 - shared transport JSON keys,
-- optional `multipoleMapPath` and `dipoleMapPath`
+- optional map-path overrides
 
 Output:
 
@@ -151,7 +154,8 @@ Output:
 
 Notes:
 
-- If `multipoleMapPath` and `dipoleMapPath` are omitted, the executable looks for `Multipole.bin` and `Dipole.bin` in the current working directory.
+- If no map paths are provided, the executable looks for `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` in the current working directory.
+- Legacy single-map mode (`dipoleMapPath` -> `Dipole.bin`) is still supported for older map files.
 - The validator checks that the requested magnet settings match the metadata stored in the loaded maps. It rejects mismatches instead of silently rescaling the fields.
 
 ## JSON Configuration
@@ -180,13 +184,12 @@ These keys are used by `MDMFieldMapGenerator`.
 | --- | --- |
 | `mdmDipoleProbe` | Dipole hall-probe setting used to build the maps. |
 | `mdmMultipoleProbe` | Entrance multipole hall-probe setting used to build the maps. |
-| `relativeTolerance` | Target relative interpolation error for non-negligible fields. |
-| `absoluteTolerance` | Target absolute interpolation error for weak fields. |
-| `maxRefinementSteps` | Maximum refinement passes. |
-| `maxNodesPerAxis` | Maximum allowed grid size along any axis. |
 | `outputDirectory` | Base directory for relative output file names. |
 | `multipoleOutput` | Output filename or path for the entrance multipole map. |
-| `dipoleOutput` | Output filename or path for the dipole map. |
+| `dipoleEntranceOutput` | Output filename or path for the entrance-fringe dipole map. |
+| `dipoleSectorOutput` | Output filename or path for the sector dipole map. |
+| `dipoleExitOutput` | Output filename or path for the exit-fringe dipole map. |
+| `dipoleOutput` | Legacy compatibility key. If used, generator writes `...Entrance`, `...Sector`, and `...Exit` sibling files. |
 
 ### Validator-Only Keys
 
@@ -195,7 +198,10 @@ These keys are optional and are used only by `MDMFieldMapTraceExample`.
 | Key | Meaning |
 | --- | --- |
 | `multipoleMapPath` | Path to the multipole map. Defaults to `Multipole.bin` in the current working directory. |
-| `dipoleMapPath` | Path to the dipole map. Defaults to `Dipole.bin` in the current working directory. |
+| `dipoleEntranceMapPath` | Path to entrance-fringe dipole map. Defaults to `DipoleEntrance.bin`. |
+| `dipoleSectorMapPath` | Path to sector dipole map. Defaults to `DipoleSector.bin`. |
+| `dipoleExitMapPath` | Path to exit-fringe dipole map. Defaults to `DipoleExit.bin`. |
+| `dipoleMapPath` | Legacy single dipole map path (`Dipole.bin`). Used only when split-map keys are not provided. |
 
 ## Physics And Modeling Conventions
 
@@ -277,7 +283,7 @@ The second multipole remains in the beamline geometry, but its field coefficient
 
 ## Binary Field Map Format
 
-Both `Multipole.bin` and `Dipole.bin` use the same container format:
+All generated maps (`Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, `DipoleExit.bin`) use the same container format:
 
 1. ASCII header with one `key=value` entry per line
 2. header terminator line:
@@ -325,9 +331,8 @@ These keys are written for both map types:
 | `spacing_cm` | Grid spacing in centimeters. |
 | `axis_definition` | Human-readable axis convention for the map. |
 | `payload_layout` | Current value is `component_major_x_fastest_float32`. |
+| `sampling_method` | Current value is `direct_raytrace`. |
 | `masked_zero_region` | `true` if regions outside the physical magnet are stored in the grid but evaluate to zero. |
-| `relative_tolerance` | Requested relative refinement target used during generation. |
-| `absolute_tolerance` | Requested absolute refinement target used during generation. |
 | `mdm_dipole_probe` | Dipole hall-probe setting used to generate the map. |
 | `mdm_multipole_probe` | Entrance multipole hall-probe setting used to generate the map. |
 
@@ -338,15 +343,14 @@ These keys are written for both map types:
 | `multipole_aperture_radius_cm` | Circular aperture radius used to mask the map outside the active bore. |
 | `multipole_transition_planes_cm` | Transition plane locations used during map generation and validation. |
 
-### Dipole-Specific Header Keys
+### Dipole-Specific Header Keys (Split Maps)
 
 | Key | Meaning |
 | --- | --- |
+| `dipole_region` | One of `entrance_fringe`, `sector`, `exit_fringe`. |
+| `field_component_frame` | Current value is `dipole_local_cartesian`. |
 | `dipole_gap_cm` | Dipole gap used for the vertical acceptance mask. |
-| `dipole_center_x_cm` | Bend-center x coordinate in the dipole local frame. |
-| `dipole_center_z_cm` | Bend-center z coordinate in the dipole local frame. |
-| `dipole_inner_radius_cm` | Inner radial boundary of the stored bend strip. |
-| `dipole_outer_radius_cm` | Outer radial boundary of the stored bend strip. |
+| `dipole_reference_radius_cm` | Dipole reference bend radius `RB` used for the sector coordinate transform. |
 | `dipole_sector_angle_deg` | Central bend angle in degrees. |
 | `dipole_alpha_deg` | Entrance face angle. |
 | `dipole_beta_deg` | Exit face angle. |
@@ -361,7 +365,7 @@ These keys are written for both map types:
 The stored arrays are rectangular, but not every grid point is physically inside a magnet. Points outside the valid region are treated as zero field:
 
 - multipole: outside the circular aperture
-- dipole: outside the valid sector or fringe region defined by the deck geometry
+- dipole split maps: each file stores only one physical region; no extra curved mask is applied inside that region grid
 
 This allows downstream code to keep a regular grid while still honoring the physical magnet shape.
 
@@ -393,4 +397,3 @@ Compare the final values:
 - The field maps contain magnetic fields only. Drifts, collimators, and the inactive second multipole are handled separately by the validator or downstream transport code.
 - The second multipole is currently treated as zero-field.
 - The example apps interpret `scatteredAngles` as a horizontal-angle sweep only.
-- The dipole map generator may write a best-effort map with a warning if refinement limits are reached before the requested tolerance.

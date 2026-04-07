@@ -1,14 +1,16 @@
 // EXAMPLE CONFIG FILE FOR MDMFieldMapTraceExample.cpp
 {
     "usingProbe"          : 1,
-    "mdmAngle"            : 35.3,
-    "mdmDipoleField"      : 1243124124,
-    "mdmDipoleProbe"      : 2475.0,
-    "mdmMultipoleProbe"   : 1608.0,
+    "mdmAngle"            : 0,
+    "mdmDipoleField"      : 2645,
+    "mdmDipoleProbe"      : 2558.03,
+    "mdmMultipoleProbe"   : 1816.2,
     "scatteredMass"       : 12,
     "scatteredCharge"     : 5,
-    "scatteredEnergy"     : 17.16,
-    "scatteredAngles"     : [33.3],
+    "scatteredEnergy"     : 18,
+    "scatteredAngles"     : [1],
     "multipoleMapPath"    : "Multipole.bin",
-    "dipoleMapPath"       : "Dipole.bin"
+    "dipoleEntranceMapPath": "DipoleEntrance.bin",
+    "dipoleSectorMapPath"  : "DipoleSector.bin",
+    "dipoleExitMapPath"    : "DipoleExit.bin"
 }

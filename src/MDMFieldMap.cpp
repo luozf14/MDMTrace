@@ -241,7 +241,8 @@ std::array<double, 3> MDMFieldMap::Evaluate(double xCm,
     }
   }
 
-  if (!InsideDipoleRegion(metadata_.fields, xCm, yCm, zCm)) {
+  if (metadata_.magnetName == "Dipole" &&
+      !InsideDipoleRegion(metadata_.fields, xCm, yCm, zCm)) {
     return {0.0, 0.0, 0.0};
   }
 

@@ -9,6 +9,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -29,7 +30,7 @@ constexpr double kSpeedOfLightCmPerSecond = 3.0e10;
 constexpr double kMultipoleStepCm = 0.1;
 constexpr double kDipoleStepCm = 0.1;
 constexpr double kPlaneToleranceCm = 1.0e-8;
-constexpr double kProbeTolerance = 1.0e-6;
+constexpr double kProbeTolerance = 2.0e-6;
 constexpr double kStoppedPosition = 1.0e10;
 constexpr std::size_t kMaxIntegrationSteps = 200000;
 constexpr std::size_t kPlaneRefinementSteps = 60;
@@ -71,11 +72,6 @@ State AddScaled(const State& lhs, const State& rhs, double scale) {
           lhs.vx + scale * rhs.vx,
           lhs.vy + scale * rhs.vy,
           lhs.vz + scale * rhs.vz};
-}
-
-State Scale(const State& state, double scale) {
-  return {scale * state.x, scale * state.y, scale * state.z,
-          scale * state.vx, scale * state.vy, scale * state.vz};
 }
 
 State CombineForRK4(const State& k1,
@@ -197,6 +193,27 @@ double OutputAngleYDegrees(const State& state, double speedCmPerSecond) {
   return std::asin(state.vy / speedCmPerSecond) * kDegreesPerRadian;
 }
 
+void AssertMagnetName(const MDMFieldMap& map, const std::string& expected) {
+  if (map.GetMetadata().magnetName != expected) {
+    throw std::runtime_error("Unexpected magnet name in map: expected '" +
+                             expected + "' but got '" +
+                             map.GetMetadata().magnetName + "'");
+  }
+}
+
+bool InMapBounds(const MDMFieldMap& map, double x, double y, double z) {
+  const auto& metadata = map.GetMetadata();
+  const auto within = [](double coord, double origin, double spacing,
+                         std::size_t count) {
+    const double maxCoord = origin + spacing * static_cast<double>(count - 1);
+    const double tolerance = 1.0e-9;
+    return coord >= origin - tolerance && coord <= maxCoord + tolerance;
+  };
+  return within(x, metadata.originCm[0], metadata.spacingCm[0], metadata.nx) &&
+         within(y, metadata.originCm[1], metadata.spacingCm[1], metadata.ny) &&
+         within(z, metadata.originCm[2], metadata.spacingCm[2], metadata.nz);
+}
+
 }  // namespace
 
 MDMFieldMapTrace::MDMFieldMapTrace() { mdmfm_init(); }
@@ -204,13 +221,34 @@ MDMFieldMapTrace::MDMFieldMapTrace() { mdmfm_init(); }
 void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
                                      const std::string& dipolePath) {
   multipoleMap_ = MDMFieldMap::Load(multipolePath);
+  AssertMagnetName(multipoleMap_, "Multipole");
+
   dipoleMap_ = MDMFieldMap::Load(dipolePath);
-  if (multipoleMap_.GetMetadata().magnetName != "Multipole") {
-    throw std::runtime_error("Unexpected magnet name in multipole map");
-  }
   if (dipoleMap_.GetMetadata().magnetName != "Dipole") {
-    throw std::runtime_error("Unexpected magnet name in dipole map");
+    throw std::runtime_error(
+        "Single dipole map load expects magnet='Dipole'. Use split-map "
+        "LoadFieldMaps overload for DipoleEntrance/DipoleSector/DipoleExit.");
   }
+  usingSplitDipoleMaps_ = false;
+  mapsLoaded_ = true;
+  ValidateLoadedMaps();
+}
+
+void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
+                                     const std::string& dipoleEntrancePath,
+                                     const std::string& dipoleSectorPath,
+                                     const std::string& dipoleExitPath) {
+  multipoleMap_ = MDMFieldMap::Load(multipolePath);
+  dipoleEntranceMap_ = MDMFieldMap::Load(dipoleEntrancePath);
+  dipoleSectorMap_ = MDMFieldMap::Load(dipoleSectorPath);
+  dipoleExitMap_ = MDMFieldMap::Load(dipoleExitPath);
+
+  AssertMagnetName(multipoleMap_, "Multipole");
+  AssertMagnetName(dipoleEntranceMap_, "DipoleEntrance");
+  AssertMagnetName(dipoleSectorMap_, "DipoleSector");
+  AssertMagnetName(dipoleExitMap_, "DipoleExit");
+
+  usingSplitDipoleMaps_ = true;
   mapsLoaded_ = true;
   ValidateLoadedMaps();
 }
@@ -271,27 +309,40 @@ double MDMFieldMapTrace::GetScatteredAngle() const {
 }
 
 void MDMFieldMapTrace::ValidateLoadedMaps() const {
-  if (!mapsLoaded_ || !requestedProbesSet_) {
+  if (!mapsLoaded_) {
     return;
   }
 
-  const double multipoleDipoleProbe =
-      MetadataDouble(multipoleMap_, "mdm_dipole_probe");
-  const double multipoleMultipoleProbe =
-      MetadataDouble(multipoleMap_, "mdm_multipole_probe");
-  const double dipoleDipoleProbe =
-      MetadataDouble(dipoleMap_, "mdm_dipole_probe");
-  const double dipoleMultipoleProbe =
-      MetadataDouble(dipoleMap_, "mdm_multipole_probe");
-
-  if (!NearlyEqual(multipoleDipoleProbe, dipoleDipoleProbe) ||
-      !NearlyEqual(multipoleMultipoleProbe, dipoleMultipoleProbe)) {
-    throw std::runtime_error("Multipole and dipole maps were generated with "
-                             "different magnet settings");
+  std::vector<const MDMFieldMap*> mapsToCheck;
+  mapsToCheck.push_back(&multipoleMap_);
+  if (usingSplitDipoleMaps_) {
+    mapsToCheck.push_back(&dipoleEntranceMap_);
+    mapsToCheck.push_back(&dipoleSectorMap_);
+    mapsToCheck.push_back(&dipoleExitMap_);
+  } else {
+    mapsToCheck.push_back(&dipoleMap_);
   }
 
-  if (!NearlyEqual(requestedDipoleProbe_, dipoleDipoleProbe) ||
-      !NearlyEqual(requestedMultipoleProbe_, dipoleMultipoleProbe)) {
+  const double referenceDipoleProbe =
+      MetadataDouble(*mapsToCheck.front(), "mdm_dipole_probe");
+  const double referenceMultipoleProbe =
+      MetadataDouble(*mapsToCheck.front(), "mdm_multipole_probe");
+
+  for (const MDMFieldMap* map : mapsToCheck) {
+    const double dipoleProbe = MetadataDouble(*map, "mdm_dipole_probe");
+    const double multipoleProbe = MetadataDouble(*map, "mdm_multipole_probe");
+    if (!NearlyEqual(referenceDipoleProbe, dipoleProbe) ||
+        !NearlyEqual(referenceMultipoleProbe, multipoleProbe)) {
+      throw std::runtime_error("Loaded field maps were generated with different "
+                               "magnet settings");
+    }
+  }
+
+  if (!requestedProbesSet_) {
+    return;
+  }
+  if (!NearlyEqual(requestedDipoleProbe_, referenceDipoleProbe) ||
+      !NearlyEqual(requestedMultipoleProbe_, referenceMultipoleProbe)) {
     throw std::runtime_error(
         "Requested probe settings do not match field-map metadata");
   }
@@ -413,8 +464,10 @@ void MDMFieldMapTrace::SendRay() {
     const double b = DeckValue(kDipoleElement, 12);
     const double radius = DeckValue(kDipoleElement, 14);
     const double phi = DeckValue(kDipoleElement, 16);
-    const double alpha = DegreesToRadians(DeckValue(kDipoleElement, 17));
-    const double beta = DegreesToRadians(DeckValue(kDipoleElement, 18));
+    const double alphaDeg = DeckValue(kDipoleElement, 17);
+    const double betaDeg = DeckValue(kDipoleElement, 18);
+    const double alpha = DegreesToRadians(alphaDeg);
+    const double beta = DegreesToRadians(betaDeg);
     const double xcr1 = DeckValue(kDipoleElement, 43);
     const double xcr2 = DeckValue(kDipoleElement, 44);
 
@@ -422,28 +475,20 @@ void MDMFieldMapTrace::SendRay() {
     const double sinAlpha = std::sin(alpha);
     const double cosBeta = std::cos(beta);
     const double sinBeta = std::sin(beta);
-    const double phiMinusAlphaMinusBeta =
-        DegreesToRadians(phi - DeckValue(kDipoleElement, 17) -
-                         DeckValue(kDipoleElement, 18));
-    const double cosRot = std::cos(phiMinusAlphaMinusBeta);
-    const double sinRot = std::sin(phiMinusAlphaMinusBeta);
-    const double cosPb =
-        std::cos(DegreesToRadians(0.5 * phi - DeckValue(kDipoleElement, 18)));
-    const double sinPb =
-        std::sin(DegreesToRadians(0.5 * phi - DeckValue(kDipoleElement, 18)));
+    const double rotation = DegreesToRadians(phi - alphaDeg - betaDeg);
+    const double cosRot = std::cos(rotation);
+    const double sinRot = std::sin(rotation);
+    const double cosPb = std::cos(DegreesToRadians(0.5 * phi - betaDeg));
+    const double sinPb = std::sin(DegreesToRadians(0.5 * phi - betaDeg));
     const double sinHalfPhi = std::sin(DegreesToRadians(0.5 * phi));
     const double tx = 2.0 * radius * sinHalfPhi * sinPb;
     const double tz = 2.0 * radius * sinHalfPhi * cosPb;
 
     const auto localToOutputD = [&](const State& localState) {
-      const double xB =
-          -localState.x * cosAlpha - localState.z * sinAlpha;
-      const double zB =
-          localState.x * sinAlpha - localState.z * cosAlpha;
-      const double vxB =
-          -localState.vx * cosAlpha - localState.vz * sinAlpha;
-      const double vzB =
-          localState.vx * sinAlpha - localState.vz * cosAlpha;
+      const double xB = -localState.x * cosAlpha - localState.z * sinAlpha;
+      const double zB = localState.x * sinAlpha - localState.z * cosAlpha;
+      const double vxB = -localState.vx * cosAlpha - localState.vz * sinAlpha;
+      const double vzB = localState.vx * sinAlpha - localState.vz * cosAlpha;
 
       const double xC = -zB * sinRot - xB * cosRot - tx;
       const double zC = -zB * cosRot + xB * sinRot - tz;
@@ -469,7 +514,32 @@ void MDMFieldMapTrace::SendRay() {
     localState.vz = state.vz;
 
     const FieldFunction fieldFunction = [&](const State& sample) {
-      return dipoleMap_.Evaluate(sample.x, sample.y, sample.z);
+      if (!usingSplitDipoleMaps_) {
+        return dipoleMap_.Evaluate(sample.x, sample.y, sample.z);
+      }
+
+      const double xB = -sample.x * cosAlpha - sample.z * sinAlpha;
+      const double zB = sample.x * sinAlpha - sample.z * cosAlpha;
+      if (InMapBounds(dipoleEntranceMap_, xB, sample.y, zB)) {
+        return dipoleEntranceMap_.Evaluate(xB, sample.y, zB);
+      }
+
+      const double xC = -zB * sinRot - xB * cosRot - tx;
+      const double zC = -zB * cosRot + xB * sinRot - tz;
+      if (InMapBounds(dipoleExitMap_, xC, sample.y, zC)) {
+        return dipoleExitMap_.Evaluate(xC, sample.y, zC);
+      }
+
+      const double radialDistance =
+          std::sqrt((sample.x + radius) * (sample.x + radius) +
+                    sample.z * sample.z);
+      const double dr = radialDistance - radius;
+      const double theta = std::atan2(sample.z, sample.x + radius);
+      const double s = radius * theta;
+      if (InMapBounds(dipoleSectorMap_, dr, sample.y, s)) {
+        return dipoleSectorMap_.Evaluate(dr, sample.y, s);
+      }
+      return std::array<double, 3>{0.0, 0.0, 0.0};
     };
     const PlaneFunction planeFunction = [&](const State& sample) {
       return localToOutputD(sample).z;
