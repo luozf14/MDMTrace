@@ -1,7 +1,6 @@
 #include "MDMTrace.h"
-#include <iostream>
-#include <math.h>
-#include <stdio.h>
+
+#include <cmath>
 
 extern "C" {
   void raytrace_(int*);
@@ -50,21 +49,9 @@ extern "C" {
   } kineblck_;
 }
 
-// MDMTrace* MDMTrace::instance_ = 0;
-double MDMTrace::jeffParams_[6] = {-0.51927,0.038638,0.028404,-0.022797,-0.019275,0.755583};
-double MDMTrace::oxfordWireSpacing_[3] = {15.1,16.3,16.3};
-
-// MDMTrace* MDMTrace::Instance() {
-//   if(!instance_) {
-//     instance_ = new MDMTrace;
-//     int flag = 0;
-//     raytrace_(&flag);
-//     kineblck_.TRGT1 = 0.;
-//     instance_->beamEnergy_ = 0;
-//     instance_->scatteredEnergy_ = 0;
-//   }
-//   return instance_;
-// }
+double MDMTrace::jeffParams_[6] = {
+    -0.51927, 0.038638, 0.028404, -0.022797, -0.019275, 0.755583};
+double MDMTrace::oxfordWireSpacing_[3] = {15.1, 16.3, 16.3};
 
 MDMTrace::MDMTrace() {
   int flag = 0;
@@ -91,66 +78,40 @@ double MDMTrace::GetMDMAngle() const {
 }
 
 void MDMTrace::SetMDMBRho(double bRho) {
-  double field = bRho/160.*1000;
+  double field = bRho / 160. * 1000;
   SetMDMDipoleField(field);
 }
 
 void MDMTrace::SetMDMDipoleField(double field) {
-  double hallProbe = field/1.034;
-  double multipoleHallProbe = hallProbe*0.71;
-  std::cout << "CONFIRM: Hall probe for dipole should be set to " << hallProbe << std::endl;
-  std::cout << "CONFIRM: Hall probe for multipole should be set to " << multipoleHallProbe << std::endl;
-  double BQR = -1.*multipoleHallProbe*1e-4*jeffParams_[5];
-  double BHR = BQR*jeffParams_[1]/jeffParams_[0];
-  double BOR = BQR*jeffParams_[2]/jeffParams_[0];
-  double BDR = BQR*jeffParams_[3]/jeffParams_[0];
-  double BDDR = BQR*jeffParams_[4]/jeffParams_[0];
-  blck0_.DATA[4][14] = field*1.e-4;
-  blck0_.DATA[3][13]=BQR;
-  blck0_.DATA[3][14]=BHR;
-  blck0_.DATA[3][15]=BOR;
-  blck0_.DATA[3][16]=BDR;
-  blck0_.DATA[3][17]=BDDR;
+  blck0_.DATA[4][14] = field * 1.e-4;
+  SetMultipoleProbe(field / 1.034 * 0.71);
 }
 
-void MDMTrace::SetMDMField(double dipoleField, double multipoleField){
-  double hallProbe = dipoleField/1.034;
-  double multipoleHallProbe = multipoleField/1.034;
-  std::cout << "CONFIRM: Hall probe for dipole should be set to " << hallProbe << std::endl;
-  std::cout << "CONFIRM: Hall probe for multipole should be set to " << multipoleHallProbe << std::endl;
-  double BQR = -1.*multipoleHallProbe*1e-4*jeffParams_[5];
-  double BHR = BQR*jeffParams_[1]/jeffParams_[0];
-  double BOR = BQR*jeffParams_[2]/jeffParams_[0];
-  double BDR = BQR*jeffParams_[3]/jeffParams_[0];
-  double BDDR = BQR*jeffParams_[4]/jeffParams_[0];
-  blck0_.DATA[4][14] = dipoleField*1.e-4;
-  blck0_.DATA[3][13]=BQR;
-  blck0_.DATA[3][14]=BHR;
-  blck0_.DATA[3][15]=BOR;
-  blck0_.DATA[3][16]=BDR;
-  blck0_.DATA[3][17]=BDDR;
+void MDMTrace::SetMDMField(double dipoleField, double multipoleField) {
+  blck0_.DATA[4][14] = dipoleField * 1.e-4;
+  SetMultipoleProbe(multipoleField / 1.034);
 }
 
-void MDMTrace::SetMDMProbe(double dipoleProbe, double multipoleProbe){
-  double hallProbe = dipoleProbe;
-  double multipoleHallProbe = multipoleProbe;
-  std::cout << "CONFIRM: Hall probe for dipole is set to " << hallProbe << std::endl;
-  std::cout << "CONFIRM: Hall probe for multipole is set to " << multipoleHallProbe << std::endl;
-  double BQR = -1.*multipoleHallProbe*1e-4*jeffParams_[5];
-  double BHR = BQR*jeffParams_[1]/jeffParams_[0];
-  double BOR = BQR*jeffParams_[2]/jeffParams_[0];
-  double BDR = BQR*jeffParams_[3]/jeffParams_[0];
-  double BDDR = BQR*jeffParams_[4]/jeffParams_[0];
-  blck0_.DATA[4][14] = dipoleProbe*1.034*1.e-4;
-  blck0_.DATA[3][13]=BQR;
-  blck0_.DATA[3][14]=BHR;
-  blck0_.DATA[3][15]=BOR;
-  blck0_.DATA[3][16]=BDR;
-  blck0_.DATA[3][17]=BDDR;
+void MDMTrace::SetMDMProbe(double dipoleProbe, double multipoleProbe) {
+  blck0_.DATA[4][14] = dipoleProbe * 1.034 * 1.e-4;
+  SetMultipoleProbe(multipoleProbe);
+}
+
+void MDMTrace::SetMultipoleProbe(double multipoleProbe) {
+  double BQR = -multipoleProbe * 1e-4 * jeffParams_[5];
+  double BHR = BQR * jeffParams_[1] / jeffParams_[0];
+  double BOR = BQR * jeffParams_[2] / jeffParams_[0];
+  double BDR = BQR * jeffParams_[3] / jeffParams_[0];
+  double BDDR = BQR * jeffParams_[4] / jeffParams_[0];
+  blck0_.DATA[3][13] = BQR;
+  blck0_.DATA[3][14] = BHR;
+  blck0_.DATA[3][15] = BOR;
+  blck0_.DATA[3][16] = BDR;
+  blck0_.DATA[3][17] = BDDR;
 }
 
 double MDMTrace::GetMDMDipoleField() const {
-  return blck0_.DATA[4][14]*1.e4;
+  return blck0_.DATA[4][14] * 1.e4;
 }
 
 void MDMTrace::SetScatteredAngle(double angle) {
@@ -159,7 +120,7 @@ void MDMTrace::SetScatteredAngle(double angle) {
   scatteredAngles_[1] = 0.;
 }
 
-void MDMTrace::SetScatteredAngle(double xAngle,double yAngle) {
+void MDMTrace::SetScatteredAngle(double xAngle, double yAngle) {
   kineblck_.THETACAL[0] = xAngle;
   scatteredAngles_[0] = xAngle;
   scatteredAngles_[1] = yAngle;
@@ -263,7 +224,7 @@ void MDMTrace::GetPositionAngleFirstWire(double& posX, double& posY, double& ang
 void MDMTrace::GetOxfordWirePositions(double& x1,double& x2,double& x3,double& x4) {
   double oxfordWire1Pos = blck2_.XO[0];
   double oxfordWire1Ang = blck2_.VXO[0];
-  double tanAngle = tan(1e-3*oxfordWire1Ang);
+  double tanAngle = std::tan(1e-3*oxfordWire1Ang);
 
   x1 = oxfordWire1Pos;
   x2 = oxfordWire1Pos+tanAngle*oxfordWireSpacing_[0];
@@ -275,4 +236,3 @@ double MDMTrace::GetFirstWireX() const{return blck2_.XO[0];}
 double MDMTrace::GetFirstWireY() const{return blck2_.YO[0];}
 double MDMTrace::GetFirstWireXAngle() const{return blck2_.VXO[0]/1000.*180./3.14159;}
 double MDMTrace::GetFirstWireYAngle() const{return blck2_.VYO[0]/1000.*180./3.14159;}
-

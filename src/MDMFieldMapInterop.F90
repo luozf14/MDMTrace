@@ -309,9 +309,11 @@ subroutine mdmfm_eval_dipole_field(x_local, y_local, z_local, bx_out, by_out, bz
     in_region = 2
     xc = -rb
     zc = 0.0d0
-    tc(1) = x_local
+    ! BDIP's sector branch expects RAYTRACE C-frame coordinates, not the
+    ! Geant4-style local circular coordinates used by the map files.
+    tc(1) = xc_region
     tc(2) = y_local
-    tc(3) = z_local
+    tc(3) = zc_region
     call bdip
   else
     bx_out = 0.0d0

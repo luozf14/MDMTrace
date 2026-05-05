@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
-#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -38,74 +37,6 @@ std::string Trim(const std::string& value) {
 
 double Lerp(double a, double b, double t) {
   return a + (b - a) * t;
-}
-
-double DegreesToRadians(double degrees) {
-  return degrees * 3.14159265358979323846 / 180.0;
-}
-
-bool InsideDipoleRegion(const std::map<std::string, std::string>& fields,
-                        double xCm,
-                        double yCm,
-                        double zCm) {
-  const auto find = [&](const std::string& key) -> const std::string* {
-    const auto it = fields.find(key);
-    return (it == fields.end()) ? nullptr : &it->second;
-  };
-
-  const auto* gapValue = find("dipole_gap_cm");
-  if (gapValue == nullptr) {
-    return true;
-  }
-
-  const double gap = ParseDouble(*gapValue);
-  const double radius = ParseDouble(*find("dipole_outer_radius_cm")) -
-                        ParseDouble(*find("dipole_strip_half_width_cm"));
-  const double phiDeg = ParseDouble(*find("dipole_sector_angle_deg"));
-  const double alphaDeg = ParseDouble(*find("dipole_alpha_deg"));
-  const double betaDeg = ParseDouble(*find("dipole_beta_deg"));
-  const double z11 = ParseDouble(*find("dipole_z11_cm"));
-  const double z12 = ParseDouble(*find("dipole_z12_cm"));
-  const double z21 = ParseDouble(*find("dipole_z21_cm"));
-  const double z22 = ParseDouble(*find("dipole_z22_cm"));
-  const double stripHalfWidth = ParseDouble(*find("dipole_strip_half_width_cm"));
-
-  if (std::abs(yCm) > gap / 2.0) {
-    return false;
-  }
-
-  const double alpha = DegreesToRadians(alphaDeg);
-  const double cosAlpha = std::cos(alpha);
-  const double sinAlpha = std::sin(alpha);
-  const double xB = -xCm * cosAlpha - zCm * sinAlpha;
-  const double zB = xCm * sinAlpha - zCm * cosAlpha;
-
-  const double phi = DegreesToRadians(phiDeg);
-  const double rotation = DegreesToRadians(phiDeg - alphaDeg - betaDeg);
-  const double cosRot = std::cos(rotation);
-  const double sinRot = std::sin(rotation);
-  const double cosPb = std::cos(DegreesToRadians(phiDeg / 2.0 - betaDeg));
-  const double sinPb = std::sin(DegreesToRadians(phiDeg / 2.0 - betaDeg));
-  const double sinHalfPhi = std::sin(phi / 2.0);
-  const double tx = 2.0 * radius * sinHalfPhi * sinPb;
-  const double tz = 2.0 * radius * sinHalfPhi * cosPb;
-  const double xC = -zB * sinRot - xB * cosRot - tx;
-  const double zC = -zB * cosRot + xB * sinRot - tz;
-
-  if (std::abs(xB) <= stripHalfWidth && zB >= z12 && zB <= z11) {
-    return true;
-  }
-
-  if (std::abs(xC) <= stripHalfWidth && zC >= z21 && zC <= z22) {
-    return true;
-  }
-
-  const double radialDistance =
-      std::sqrt((xCm + radius) * (xCm + radius) + zCm * zCm);
-  const double dr = radialDistance - radius;
-  const double theta = std::atan2(zCm, xCm + radius);
-  return dr >= -stripHalfWidth && dr <= stripHalfWidth && theta >= 0.0 &&
-         theta <= phi;
 }
 
 }  // namespace
@@ -239,11 +170,6 @@ std::array<double, 3> MDMFieldMap::Evaluate(double xCm,
     if (xCm * xCm + yCm * yCm > radiusCm * radiusCm) {
       return {0.0, 0.0, 0.0};
     }
-  }
-
-  if (metadata_.magnetName == "Dipole" &&
-      !InsideDipoleRegion(metadata_.fields, xCm, yCm, zCm)) {
-    return {0.0, 0.0, 0.0};
   }
 
   const auto positionToIndex = [](double coord, double origin, double spacing,

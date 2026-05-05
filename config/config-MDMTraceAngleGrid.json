@@ -1,0 +1,32 @@
+// EXAMPLE 2D ANGULAR SCAN FOR MDMTraceExample and MDMFieldMapTraceExample
+{
+    "usingProbe"          : 1,
+    "mdmAngle"            : 0,
+    "mdmDipoleField"      : 2645,
+    "mdmDipoleProbe"      : 2558.03,
+    "mdmMultipoleProbe"   : 1816.2,
+    "scatteredMass"       : 12,
+    "scatteredCharge"     : 5,
+    "scatteredEnergy"     : 18,
+
+    // Legacy horizontal-only rays are still accepted:
+    // "scatteredAngles" : [1],
+
+    // Explicit 2D rays are also accepted:
+    // "scatteredAnglePairs" : [[0.5, -0.5], [1.0, 0.0], [1.5, 0.5]],
+
+    // Grid rays are generated x-major: each x value scans all y values.
+    "scatteredAngleGrid"  : {
+        "xMin"  : -1.9,
+        "xMax"  : 1.9,
+        "xStep" : 0.1,
+        "yMin"  : -1.9,
+        "yMax"  : 1.9,
+        "yStep" : 0.1
+    },
+
+    "multipoleMapPath"     : "Multipole.bin",
+    "dipoleEntranceMapPath": "DipoleEntrance.bin",
+    "dipoleSectorMapPath"  : "DipoleSector.bin",
+    "dipoleExitMapPath"    : "DipoleExit.bin"
+}

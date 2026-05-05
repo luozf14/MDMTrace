@@ -10,11 +10,12 @@ This repository currently models one specific MDM configuration:
 
 ## Overview
 
-The project has three main user-facing executables:
+The project has four main user-facing executables:
 
 - `MDMTraceExample`: runs the original Fortran RAYTRACE transport through the deck.
 - `MDMFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`.
 - `MDMFieldMapTraceExample`: transports ions through the generated field maps and compares against the original tracer output format.
+- `Compare`: runs both transport paths for the 2D angle-grid config and writes ROOT comparison plots.
 
 At the library level, the repo exposes three main C++ interfaces:
 
@@ -30,6 +31,7 @@ At the library level, the repo exposes three main C++ interfaces:
 - `dat/`: the active RAYTRACE optics deck, `rayin.dat`.
 - `MDMTraceExample.C`: example executable for the original Fortran transport.
 - `MDMFieldMapTraceExample.cpp`: example executable for the field-map validator.
+- `Compare.cpp`: ROOT comparison executable for legacy-vs-field-map validation.
 - `raytrace1.pdf`, `raytrace2.pdf`, `raytrace3.pdf`: original RAYTRACE manuals.
 
 ## Build
@@ -46,6 +48,7 @@ The build produces:
 - `build/MDMTraceExample`
 - `build/MDMFieldMapGenerator`
 - `build/MDMFieldMapTraceExample`
+- `build/Compare`
 
 During configuration, CMake copies `dat/rayin.dat` into `build/`. Running the executables from `build/` is the intended default workflow.
 
@@ -74,14 +77,15 @@ Input:
 
 Output:
 
-- confirmation lines about the selected settings,
-- one final line per requested scattering angle in the form
-  `Scattered Angle: ... X1: ... Y1: ... AngX1: ... AngY1: ...`
+- setup diagnostics on stderr,
+- one final line per requested input ray on stdout in the form
+  `Scattered Angle X: ... Scattered Angle Y: ... X1: ... Y1: ... AngX1: ... AngY1: ...`
 
 Notes:
 
 - This executable uses the original Fortran tracer directly.
-- In the example app, `scatteredAngles` is interpreted as a list of horizontal scattering angles; the vertical input angle is fixed to `0`.
+- `scatteredAngles` remains supported as a legacy horizontal-only scan with vertical angle fixed to `0`.
+- Use `scatteredAnglePairs` or `scatteredAngleGrid` to scan nonzero vertical input angles.
 
 ### `MDMFieldMapGenerator`
 
@@ -116,7 +120,7 @@ Notes:
 
 - The generator ignores the second multipole because its field is off in the current deck.
 - The generator stores direct RAYTRACE field samples at grid nodes. It does not run interpolation-based refinement.
-- Grid spacing is derived from `rayin.dat` (`LF1/LU1/LF2/DG`), not from user-provided node counts.
+- Grid spacing is controlled by `fieldMapSpacingMm` in the generator JSON. The generator no longer uses `LF1/LU1/LF2/DG` as map spacing.
 - Relative output paths are resolved against `outputDirectory`.
 
 ### `MDMFieldMapTraceExample`
@@ -150,13 +154,43 @@ Input:
 
 Output:
 
-- one final line per requested scattering angle in the same form used by `MDMTraceExample`
+- one final line per requested input ray in the same form used by `MDMTraceExample`
 
 Notes:
 
 - If no map paths are provided, the executable looks for `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` in the current working directory.
-- Legacy single-map mode (`dipoleMapPath` -> `Dipole.bin`) is still supported for older map files.
 - The validator checks that the requested magnet settings match the metadata stored in the loaded maps. It rejects mismatches instead of silently rescaling the fields.
+
+### `Compare`
+
+Purpose: run legacy RAYTRACE transport and field-map transport for `config/config-MDMTraceAngleGrid.json`, then write four ROOT comparison canvases.
+
+Syntax:
+
+```bash
+./Compare [config-file]
+```
+
+Example:
+
+```bash
+cd build
+./Compare
+```
+
+Output:
+
+- `Compare.root`
+- four canvases: `c_X1`, `c_Y1`, `c_AngX1`, and `c_AngY1`
+- each canvas has a top `Legacy` vs `FieldMap` scatter plot with equal axis ranges and a red `y=x` diagonal
+- each canvas has a bottom residual plot with `Legacy - FieldMap` on the y-axis
+- stdout summary of RMS residual and max absolute residual
+
+Notes:
+
+- The default config is `${PROJECT_SOURCE_DIR}/config/config-MDMTraceAngleGrid.json`.
+- The config can use the same ray-scan keys as the examples: `scatteredAngles`, `scatteredAnglePairs`, or `scatteredAngleGrid`.
+- Residuals use the `Legacy - FieldMap` convention.
 
 ## JSON Configuration
 
@@ -174,7 +208,11 @@ These keys are used by `MDMTraceExample` and `MDMFieldMapTraceExample`.
 | `scatteredMass` | Ion mass in AMU. |
 | `scatteredCharge` | Ion charge state in units of `e`. |
 | `scatteredEnergy` | Ion kinetic energy in MeV. |
-| `scatteredAngles` | List of horizontal scattering angles in degrees. The example apps keep the vertical input angle fixed at `0`. |
+| `scatteredAngles` | Legacy list of horizontal scattering angles in degrees. Each entry generates `(xDeg, yDeg) = (angle, 0)`. |
+| `scatteredAnglePairs` | Explicit 2D input rays as `[[xDeg, yDeg], ...]`. |
+| `scatteredAngleGrid` | 2D angular grid object with `xMin`, `xMax`, `xStep`, `yMin`, `yMax`, and `yStep`, all in degrees. |
+
+If multiple ray-scan keys are present, rays are concatenated in this order: `scatteredAngles`, `scatteredAnglePairs`, then `scatteredAngleGrid`. Grid scan ordering is x-major: for each x angle, all y angles are scanned. Grid steps must be positive, ranges must satisfy `max >= min`, and the generated grid always includes both endpoints.
 
 ### Generator Keys
 
@@ -184,6 +222,7 @@ These keys are used by `MDMFieldMapGenerator`.
 | --- | --- |
 | `mdmDipoleProbe` | Dipole hall-probe setting used to build the maps. |
 | `mdmMultipoleProbe` | Entrance multipole hall-probe setting used to build the maps. |
+| `fieldMapSpacingMm` | Required field-map spacing in millimeters, used for every map axis. If a physical range is not an exact multiple of the spacing, the stored box is padded on the upper side to keep the requested spacing while covering the full field region. |
 | `outputDirectory` | Base directory for relative output file names. |
 | `multipoleOutput` | Output filename or path for the entrance multipole map. |
 | `dipoleEntranceOutput` | Output filename or path for the entrance-fringe dipole map. |
@@ -201,7 +240,6 @@ These keys are optional and are used only by `MDMFieldMapTraceExample`.
 | `dipoleEntranceMapPath` | Path to entrance-fringe dipole map. Defaults to `DipoleEntrance.bin`. |
 | `dipoleSectorMapPath` | Path to sector dipole map. Defaults to `DipoleSector.bin`. |
 | `dipoleExitMapPath` | Path to exit-fringe dipole map. Defaults to `DipoleExit.bin`. |
-| `dipoleMapPath` | Legacy single dipole map path (`Dipole.bin`). Used only when split-map keys are not provided. |
 
 ## Physics And Modeling Conventions
 
@@ -323,7 +361,7 @@ These keys are written for both map types:
 | Key | Meaning |
 | --- | --- |
 | `version` | File format version. Current value is `1`. |
-| `magnet` | Magnet name, currently `Multipole` or `Dipole`. |
+| `magnet` | Magnet name, currently `Multipole`, `DipoleEntrance`, `DipoleSector`, or `DipoleExit`. |
 | `units_length` | Length unit. Current value is `cm`. |
 | `units_field` | Field unit. Current value is `Tesla`. |
 | `nx`, `ny`, `nz` | Grid node counts along each axis. |
@@ -335,6 +373,7 @@ These keys are written for both map types:
 | `masked_zero_region` | `true` if regions outside the physical magnet are stored in the grid but evaluate to zero. |
 | `mdm_dipole_probe` | Dipole hall-probe setting used to generate the map. |
 | `mdm_multipole_probe` | Entrance multipole hall-probe setting used to generate the map. |
+| `requested_spacing_mm` | Requested generator spacing from `fieldMapSpacingMm`. |
 
 ### Multipole-Specific Header Keys
 
@@ -349,6 +388,7 @@ These keys are written for both map types:
 | --- | --- |
 | `dipole_region` | One of `entrance_fringe`, `sector`, `exit_fringe`. |
 | `field_component_frame` | Current value is `dipole_local_cartesian`. |
+| `raytrace_sector_frame` | Present on `DipoleSector` maps. Current value is `c_axis`, meaning sector samples were evaluated in the RAYTRACE C-frame before rotating fields into the stored local frame. |
 | `dipole_gap_cm` | Dipole gap used for the vertical acceptance mask. |
 | `dipole_reference_radius_cm` | Dipole reference bend radius `RB` used for the sector coordinate transform. |
 | `dipole_sector_angle_deg` | Central bend angle in degrees. |
@@ -382,6 +422,13 @@ cd build
 ./MDMFieldMapTraceExample ../config/config-MDMTraceExample.json
 ```
 
+For a wider angular scan that includes rays off the median plane:
+
+```bash
+./MDMTraceExample ../config/config-MDMTraceAngleGrid.json
+./MDMFieldMapTraceExample ../config/config-MDMTraceAngleGrid.json
+```
+
 Compare the final values:
 
 - `X1`
@@ -396,4 +443,4 @@ Compare the final values:
 - This is not a generic RAYTRACE deck runner. The current field-map workflow is specific to the MDM deck shipped in this repository.
 - The field maps contain magnetic fields only. Drifts, collimators, and the inactive second multipole are handled separately by the validator or downstream transport code.
 - The second multipole is currently treated as zero-field.
-- The example apps interpret `scatteredAngles` as a horizontal-angle sweep only.
+- The example apps scan input angles only. They do not currently scan initial target position offsets.

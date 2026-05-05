@@ -9,8 +9,6 @@ class MDMFieldMapTrace {
  public:
   MDMFieldMapTrace();
 
-  void LoadFieldMaps(const std::string& multipolePath = "Multipole.bin",
-                     const std::string& dipolePath = "Dipole.bin");
   void LoadFieldMaps(const std::string& multipolePath,
                      const std::string& dipoleEntrancePath,
                      const std::string& dipoleSectorPath,
@@ -56,9 +54,7 @@ class MDMFieldMapTrace {
   bool requestedProbesSet_ = false;
 
   bool mapsLoaded_ = false;
-  bool usingSplitDipoleMaps_ = false;
   MDMFieldMap multipoleMap_;
-  MDMFieldMap dipoleMap_;
   MDMFieldMap dipoleEntranceMap_;
   MDMFieldMap dipoleSectorMap_;
   MDMFieldMap dipoleExitMap_;

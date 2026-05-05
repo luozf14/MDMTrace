@@ -193,14 +193,6 @@ double OutputAngleYDegrees(const State& state, double speedCmPerSecond) {
   return std::asin(state.vy / speedCmPerSecond) * kDegreesPerRadian;
 }
 
-void AssertMagnetName(const MDMFieldMap& map, const std::string& expected) {
-  if (map.GetMetadata().magnetName != expected) {
-    throw std::runtime_error("Unexpected magnet name in map: expected '" +
-                             expected + "' but got '" +
-                             map.GetMetadata().magnetName + "'");
-  }
-}
-
 bool InMapBounds(const MDMFieldMap& map, double x, double y, double z) {
   const auto& metadata = map.GetMetadata();
   const auto within = [](double coord, double origin, double spacing,
@@ -219,22 +211,6 @@ bool InMapBounds(const MDMFieldMap& map, double x, double y, double z) {
 MDMFieldMapTrace::MDMFieldMapTrace() { mdmfm_init(); }
 
 void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
-                                     const std::string& dipolePath) {
-  multipoleMap_ = MDMFieldMap::Load(multipolePath);
-  AssertMagnetName(multipoleMap_, "Multipole");
-
-  dipoleMap_ = MDMFieldMap::Load(dipolePath);
-  if (dipoleMap_.GetMetadata().magnetName != "Dipole") {
-    throw std::runtime_error(
-        "Single dipole map load expects magnet='Dipole'. Use split-map "
-        "LoadFieldMaps overload for DipoleEntrance/DipoleSector/DipoleExit.");
-  }
-  usingSplitDipoleMaps_ = false;
-  mapsLoaded_ = true;
-  ValidateLoadedMaps();
-}
-
-void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
                                      const std::string& dipoleEntrancePath,
                                      const std::string& dipoleSectorPath,
                                      const std::string& dipoleExitPath) {
@@ -243,12 +219,6 @@ void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
   dipoleSectorMap_ = MDMFieldMap::Load(dipoleSectorPath);
   dipoleExitMap_ = MDMFieldMap::Load(dipoleExitPath);
 
-  AssertMagnetName(multipoleMap_, "Multipole");
-  AssertMagnetName(dipoleEntranceMap_, "DipoleEntrance");
-  AssertMagnetName(dipoleSectorMap_, "DipoleSector");
-  AssertMagnetName(dipoleExitMap_, "DipoleExit");
-
-  usingSplitDipoleMaps_ = true;
   mapsLoaded_ = true;
   ValidateLoadedMaps();
 }
@@ -315,13 +285,9 @@ void MDMFieldMapTrace::ValidateLoadedMaps() const {
 
   std::vector<const MDMFieldMap*> mapsToCheck;
   mapsToCheck.push_back(&multipoleMap_);
-  if (usingSplitDipoleMaps_) {
-    mapsToCheck.push_back(&dipoleEntranceMap_);
-    mapsToCheck.push_back(&dipoleSectorMap_);
-    mapsToCheck.push_back(&dipoleExitMap_);
-  } else {
-    mapsToCheck.push_back(&dipoleMap_);
-  }
+  mapsToCheck.push_back(&dipoleEntranceMap_);
+  mapsToCheck.push_back(&dipoleSectorMap_);
+  mapsToCheck.push_back(&dipoleExitMap_);
 
   const double referenceDipoleProbe =
       MetadataDouble(*mapsToCheck.front(), "mdm_dipole_probe");
@@ -431,6 +397,7 @@ void MDMFieldMapTrace::SendRay() {
     const double a = DeckValue(kMultipoleElement, 10);
     const double b = DeckValue(kMultipoleElement, 11);
     const double l = DeckValue(kMultipoleElement, 12);
+    const double z11 = DeckValue(kMultipoleElement, 19);
 
     State localState;
     localState.x = state.x;
@@ -439,6 +406,17 @@ void MDMFieldMapTrace::SendRay() {
     localState.vx = state.vx;
     localState.vy = state.vy;
     localState.vz = state.vz;
+
+    // RAYTRACE element reference planes can sit inside the fringe model. Match
+    // POLES by backing up to Z11 before starting magnetic integration.
+    if (std::abs(localState.vz) <= 1.0e-30) {
+      throw std::runtime_error("Multipole local vz is zero");
+    }
+    const double multipoleStartZ = -0.5 * l - z11;
+    const double startDt = (multipoleStartZ - localState.z) / localState.vz;
+    localState.x += startDt * localState.vx;
+    localState.y += startDt * localState.vy;
+    localState.z = multipoleStartZ;
 
     const FieldFunction fieldFunction = [&](const State& sample) {
       return multipoleMap_.Evaluate(sample.x, sample.y, sample.z);
@@ -468,6 +446,7 @@ void MDMFieldMapTrace::SendRay() {
     const double betaDeg = DeckValue(kDipoleElement, 18);
     const double alpha = DegreesToRadians(alphaDeg);
     const double beta = DegreesToRadians(betaDeg);
+    const double z11 = DeckValue(kDipoleElement, 25);
     const double xcr1 = DeckValue(kDipoleElement, 43);
     const double xcr2 = DeckValue(kDipoleElement, 44);
 
@@ -506,18 +485,33 @@ void MDMFieldMapTrace::SendRay() {
     };
 
     State localState;
-    localState.x = state.x + xcr1;
+    const double xB = (a - state.z) * sinAlpha - (state.x + xcr1) * cosAlpha;
+    const double zB = (a - state.z) * cosAlpha + (state.x + xcr1) * sinAlpha;
+    const double vxB = -state.vz * sinAlpha - state.vx * cosAlpha;
+    const double vzB = -state.vz * cosAlpha + state.vx * sinAlpha;
+
+    localState.x = -xB * cosAlpha + zB * sinAlpha;
     localState.y = state.y;
-    localState.z = state.z - a;
-    localState.vx = state.vx;
+    localState.z = -xB * sinAlpha - zB * cosAlpha;
+    localState.vx = -vxB * cosAlpha + vzB * sinAlpha;
     localState.vy = state.vy;
-    localState.vz = state.vz;
+    localState.vz = -vxB * sinAlpha - vzB * cosAlpha;
+
+    // Match DIPOLE: transform to the entrance B frame, then back up to Z11
+    // before following the split maps through fringe, sector, and exit.
+    const double entranceZB =
+        localState.x * sinAlpha - localState.z * cosAlpha;
+    const double entranceVzB =
+        localState.vx * sinAlpha - localState.vz * cosAlpha;
+    if (std::abs(entranceVzB) <= 1.0e-30) {
+      throw std::runtime_error("Dipole entrance-frame vz is zero");
+    }
+    const double startDt = (z11 - entranceZB) / entranceVzB;
+    localState.x += startDt * localState.vx;
+    localState.y += startDt * localState.vy;
+    localState.z += startDt * localState.vz;
 
     const FieldFunction fieldFunction = [&](const State& sample) {
-      if (!usingSplitDipoleMaps_) {
-        return dipoleMap_.Evaluate(sample.x, sample.y, sample.z);
-      }
-
       const double xB = -sample.x * cosAlpha - sample.z * sinAlpha;
       const double zB = sample.x * sinAlpha - sample.z * cosAlpha;
       if (InMapBounds(dipoleEntranceMap_, xB, sample.y, zB)) {
@@ -548,6 +542,7 @@ void MDMFieldMapTrace::SendRay() {
     localState = IntegrateToPlane(localState, fieldFunction, planeFunction,
                                   kDipoleStepCm, speedCmPerSecond, kFactor,
                                   "dipole");
+
     state = localToOutputD(localState);
     state.z = 0.0;
   }

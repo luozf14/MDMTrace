@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 project(MDMTraceExample)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -33,6 +33,46 @@ target_link_libraries(MDMFieldMapGenerator PRIVATE MDMTrace JsonCpp)
 add_executable(MDMFieldMapTraceExample MDMFieldMapTraceExample.cpp)
 target_include_directories(MDMFieldMapTraceExample PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(MDMFieldMapTraceExample PRIVATE MDMTrace JsonCpp)
+
+find_package(ROOT QUIET COMPONENTS Core RIO Hist Graf Gpad)
+if(ROOT_FOUND AND ROOT_LIBRARIES)
+    set(MDMTRACE_ROOT_INCLUDE_DIRS ${ROOT_INCLUDE_DIRS})
+    set(MDMTRACE_ROOT_LIBRARIES ${ROOT_LIBRARIES})
+    separate_arguments(MDMTRACE_ROOT_COMPILE_OPTIONS UNIX_COMMAND "${ROOT_CXX_FLAGS}")
+else()
+    find_program(ROOT_CONFIG_EXECUTABLE root-config)
+    if(NOT ROOT_CONFIG_EXECUTABLE)
+        message(FATAL_ERROR "ROOT is required to build Compare. Install ROOT or ensure root-config is on PATH.")
+    endif()
+    execute_process(
+        COMMAND ${ROOT_CONFIG_EXECUTABLE} --cflags
+        RESULT_VARIABLE ROOT_CONFIG_CFLAGS_RESULT
+        OUTPUT_VARIABLE ROOT_CONFIG_CFLAGS
+        ERROR_VARIABLE ROOT_CONFIG_CFLAGS_ERROR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(NOT ROOT_CONFIG_CFLAGS_RESULT EQUAL 0)
+        message(FATAL_ERROR "root-config --cflags failed: ${ROOT_CONFIG_CFLAGS_ERROR}")
+    endif()
+    execute_process(
+        COMMAND ${ROOT_CONFIG_EXECUTABLE} --libs
+        RESULT_VARIABLE ROOT_CONFIG_LIBS_RESULT
+        OUTPUT_VARIABLE ROOT_CONFIG_LIBS
+        ERROR_VARIABLE ROOT_CONFIG_LIBS_ERROR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(NOT ROOT_CONFIG_LIBS_RESULT EQUAL 0)
+        message(FATAL_ERROR "root-config --libs failed: ${ROOT_CONFIG_LIBS_ERROR}")
+    endif()
+    separate_arguments(MDMTRACE_ROOT_COMPILE_OPTIONS UNIX_COMMAND "${ROOT_CONFIG_CFLAGS}")
+    separate_arguments(MDMTRACE_ROOT_LIBRARIES UNIX_COMMAND "${ROOT_CONFIG_LIBS}")
+endif()
+
+add_executable(Compare Compare.cpp)
+target_include_directories(Compare PRIVATE ${PROJECT_SOURCE_DIR}/include ${MDMTRACE_ROOT_INCLUDE_DIRS})
+target_compile_options(Compare PRIVATE ${MDMTRACE_ROOT_COMPILE_OPTIONS})
+target_compile_definitions(Compare PRIVATE MDMTRACE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(Compare PRIVATE MDMTrace JsonCpp ${MDMTRACE_ROOT_LIBRARIES})
 
 # copy rayin.dat from dat/ to build/
 set(DAT_FILES rayin.dat)

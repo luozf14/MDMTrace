@@ -3,6 +3,7 @@
 {
     "mdmDipoleProbe"      : 2558.03,
     "mdmMultipoleProbe"   : 1816.2,
+    "fieldMapSpacingMm"   : 5.0,
     "outputDirectory"     : ".",
     "multipoleOutput"     : "Multipole.bin",
     "dipoleEntranceOutput": "DipoleEntrance.bin",
