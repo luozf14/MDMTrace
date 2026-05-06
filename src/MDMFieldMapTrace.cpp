@@ -1,7 +1,5 @@
 #include "MDMFieldMapTrace.h"
 
-#include "MDMFieldMapInterop.h"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -12,15 +10,6 @@
 #include <vector>
 
 namespace {
-
-constexpr std::size_t kEntranceDriftElement = 1;
-constexpr std::size_t kEntranceCollimatorElement = 2;
-constexpr std::size_t kIntermediateDriftElement = 3;
-constexpr std::size_t kMultipoleElement = 4;
-constexpr std::size_t kDipoleElement = 5;
-constexpr std::size_t kSecondMultipoleElement = 6;
-constexpr std::size_t kExitCollimatorElement = 7;
-constexpr std::size_t kFinalDriftElement = 8;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDegreesPerRadian = 180.0 / kPi;
@@ -44,12 +33,56 @@ struct State {
   double vz = 0.0;
 };
 
+struct CollimatorGeometry {
+  double type = 0.0;
+  double xCenter = 0.0;
+  double yCenter = 0.0;
+  double xMax = 0.0;
+  double yMax = 0.0;
+};
+
+struct MultipoleGeometry {
+  double a = 0.0;
+  double b = 0.0;
+  double length = 0.0;
+  double z11 = 0.0;
+};
+
+struct DipoleGeometry {
+  double a = 0.0;
+  double b = 0.0;
+  double radius = 0.0;
+  double phiDeg = 0.0;
+  double alphaDeg = 0.0;
+  double betaDeg = 0.0;
+  double z11 = 0.0;
+  double xcr1 = 0.0;
+  double xcr2 = 0.0;
+};
+
+struct BeamlineGeometry {
+  double entranceDrift = 0.0;
+  CollimatorGeometry entranceCollimator;
+  double intermediateDrift = 0.0;
+  MultipoleGeometry multipole;
+  DipoleGeometry dipole;
+  double secondMultipoleDrift = 0.0;
+  CollimatorGeometry exitCollimator;
+  double finalDrift = 0.0;
+};
+
+const BeamlineGeometry kMdmGeometry{
+    63.5,
+    {0.0, 0.0, 0.0, 2.27965, 2.2},
+    18.075,
+    {1.925, 113.2, 26.0, 20.0},
+    {26.0, 32.55, 160.0, 100.0, 0.0, 0.0, 46.0, 0.0, 0.0},
+    36.7,
+    {0.0, -0.08, 0.0, 29.61, 20.21},
+    96.13};
+
 double DegreesToRadians(double degrees) {
   return degrees * kRadiansPerDegree;
-}
-
-double DeckValue(std::size_t elementOneBased, std::size_t fieldOneBased) {
-  return blck0_.DATA[elementOneBased - 1][fieldOneBased - 1];
 }
 
 double MetadataDouble(const MDMFieldMap& map, const std::string& key) {
@@ -208,7 +241,7 @@ bool InMapBounds(const MDMFieldMap& map, double x, double y, double z) {
 
 }  // namespace
 
-MDMFieldMapTrace::MDMFieldMapTrace() { mdmfm_init(); }
+MDMFieldMapTrace::MDMFieldMapTrace() = default;
 
 void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
                                      const std::string& dipoleEntrancePath,
@@ -263,6 +296,11 @@ void MDMFieldMapTrace::SetScatteredEnergy(double energyMeV) {
 
 double MDMFieldMapTrace::GetScatteredEnergy() const {
   return scatteredEnergyMeV_;
+}
+
+void MDMFieldMapTrace::SetInitialPosition(double xCm, double yCm) {
+  initialXcm_ = xCm;
+  initialYcm_ = yCm;
 }
 
 void MDMFieldMapTrace::SetScatteredAngle(double xAngleDeg) {
@@ -347,8 +385,8 @@ void MDMFieldMapTrace::SendRay() {
   const double thetaYRad = thetaYMrad / 1000.0;
 
   State state;
-  state.x = 0.0;
-  state.y = 0.0;
+  state.x = initialXcm_;
+  state.y = initialYcm_;
   state.z = 0.0;
   state.vx = speedCmPerSecond * std::sin(thetaXRad) * std::cos(thetaYRad);
   state.vy = speedCmPerSecond * std::sin(thetaYRad);
@@ -368,36 +406,31 @@ void MDMFieldMapTrace::SendRay() {
     state.z = 0.0;
   };
 
-  const auto applyCollimator = [&](std::size_t element) {
-    const double type = DeckValue(element, 1);
-    const double xCenter = DeckValue(element, 2);
-    const double yCenter = DeckValue(element, 3);
-    const double xMax = DeckValue(element, 4);
-    const double yMax = DeckValue(element, 5);
-
-    if (type == 0.0) {
-      return std::abs(state.x - xCenter) <= xMax &&
-             std::abs(state.y - yCenter) <= yMax;
+  const auto applyCollimator = [&](const CollimatorGeometry& collimator) {
+    if (collimator.type == 0.0) {
+      return std::abs(state.x - collimator.xCenter) <= collimator.xMax &&
+             std::abs(state.y - collimator.yCenter) <= collimator.yMax;
     }
 
-    const double xc = (state.x - xCenter) / xMax;
-    const double yc = (state.y - yCenter) / yMax;
+    const double xc = (state.x - collimator.xCenter) / collimator.xMax;
+    const double yc = (state.y - collimator.yCenter) / collimator.yMax;
     return xc * xc + yc * yc <= 1.0;
   };
 
-  propagateDrift(DeckValue(kEntranceDriftElement, 1));
-  if (!applyCollimator(kEntranceCollimatorElement)) {
+  propagateDrift(kMdmGeometry.entranceDrift);
+  if (!applyCollimator(kMdmGeometry.entranceCollimator)) {
     stopRay();
     return;
   }
 
-  propagateDrift(DeckValue(kIntermediateDriftElement, 1));
+  propagateDrift(kMdmGeometry.intermediateDrift);
 
   {
-    const double a = DeckValue(kMultipoleElement, 10);
-    const double b = DeckValue(kMultipoleElement, 11);
-    const double l = DeckValue(kMultipoleElement, 12);
-    const double z11 = DeckValue(kMultipoleElement, 19);
+    const MultipoleGeometry& multipole = kMdmGeometry.multipole;
+    const double a = multipole.a;
+    const double b = multipole.b;
+    const double l = multipole.length;
+    const double z11 = multipole.z11;
 
     State localState;
     localState.x = state.x;
@@ -438,17 +471,18 @@ void MDMFieldMapTrace::SendRay() {
   }
 
   {
-    const double a = DeckValue(kDipoleElement, 11);
-    const double b = DeckValue(kDipoleElement, 12);
-    const double radius = DeckValue(kDipoleElement, 14);
-    const double phi = DeckValue(kDipoleElement, 16);
-    const double alphaDeg = DeckValue(kDipoleElement, 17);
-    const double betaDeg = DeckValue(kDipoleElement, 18);
+    const DipoleGeometry& dipole = kMdmGeometry.dipole;
+    const double a = dipole.a;
+    const double b = dipole.b;
+    const double radius = dipole.radius;
+    const double phi = dipole.phiDeg;
+    const double alphaDeg = dipole.alphaDeg;
+    const double betaDeg = dipole.betaDeg;
     const double alpha = DegreesToRadians(alphaDeg);
     const double beta = DegreesToRadians(betaDeg);
-    const double z11 = DeckValue(kDipoleElement, 25);
-    const double xcr1 = DeckValue(kDipoleElement, 43);
-    const double xcr2 = DeckValue(kDipoleElement, 44);
+    const double z11 = dipole.z11;
+    const double xcr1 = dipole.xcr1;
+    const double xcr2 = dipole.xcr2;
 
     const double cosAlpha = std::cos(alpha);
     const double sinAlpha = std::sin(alpha);
@@ -547,19 +581,14 @@ void MDMFieldMapTrace::SendRay() {
     state.z = 0.0;
   }
 
-  {
-    const double a = DeckValue(kSecondMultipoleElement, 10);
-    const double b = DeckValue(kSecondMultipoleElement, 11);
-    const double l = DeckValue(kSecondMultipoleElement, 12);
-    propagateDrift(a + b + l);
-  }
+  propagateDrift(kMdmGeometry.secondMultipoleDrift);
 
-  if (!applyCollimator(kExitCollimatorElement)) {
+  if (!applyCollimator(kMdmGeometry.exitCollimator)) {
     stopRay();
     return;
   }
 
-  propagateDrift(DeckValue(kFinalDriftElement, 1));
+  propagateDrift(kMdmGeometry.finalDrift);
 
   firstWireX_ = state.x;
   firstWireY_ = state.y;

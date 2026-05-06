@@ -29,6 +29,8 @@ class MDMFieldMapTrace {
   void SetScatteredEnergy(double energyMeV);
   double GetScatteredEnergy() const;
 
+  void SetInitialPosition(double xCm, double yCm);
+
   void SetScatteredAngle(double xAngleDeg);
   void SetScatteredAngle(double xAngleDeg, double yAngleDeg);
   double GetScatteredAngle() const;
@@ -47,6 +49,8 @@ class MDMFieldMapTrace {
   double scatteredMassAmu_ = 0.0;
   double scatteredCharge_ = 0.0;
   double scatteredEnergyMeV_ = 0.0;
+  double initialXcm_ = 0.0;
+  double initialYcm_ = 0.0;
   double scatteredAnglesDeg_[2]{0.0, 0.0};
 
   double requestedDipoleProbe_ = 0.0;

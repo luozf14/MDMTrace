@@ -12,5 +12,36 @@
     "multipoleMapPath"    : "Multipole.bin",
     "dipoleEntranceMapPath": "DipoleEntrance.bin",
     "dipoleSectorMapPath"  : "DipoleSector.bin",
-    "dipoleExitMapPath"    : "DipoleExit.bin"
+    "dipoleExitMapPath"    : "DipoleExit.bin",
+    "ionOptics": {
+        "reference": {
+            "xMm"        : 0.0,
+            "thetaXMrad" : 0.0,
+            "yMm"        : 0.0,
+            "thetaYMrad" : 0.0,
+            "energyMeV"  : 18.0
+        },
+        "method": "fit",
+        "order": 2,
+        "threads": 0,
+        "maxRays": 1000000,
+        "fitGrid": {
+            "xMinMm"         : -5.0,
+            "xMaxMm"         :  5.0,
+            "xStepMm"        :  1.0,
+            "thetaXMinMrad"  : -10.0,
+            "thetaXMaxMrad"  :  10.0,
+            "thetaXStepMrad" :  2.5,
+            "yMinMm"         : -5.0,
+            "yMaxMm"         :  5.0,
+            "yStepMm"        :  1.0,
+            "thetaYMinMrad"  : -10.0,
+            "thetaYMaxMrad"  :  10.0,
+            "thetaYStepMrad" :  2.5,
+            "deltaMin"       : -5,
+            "deltaMax"       :  5,
+            "deltaStep"      :  0.5
+        },
+        "outputPath": "IonOpticsMatrix.txt"
+    }
 }

@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
   configStream >> config;
   const bool usingProbe =
       config.isMember("usingProbe") && config["usingProbe"].asBool();
-  const std::vector<mdm::RayAngle> rays = mdm::ParseRayAngles(config);
+  const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(config);
 
   MDMFieldMapTrace trace;
   trace.SetMDMAngle(GetDouble(config, "mdmAngle"));
@@ -52,17 +52,19 @@ int main(int argc, char* argv[]) {
   }
   trace.SetScatteredMass(GetDouble(config, "scatteredMass"));
   trace.SetScatteredCharge(GetDouble(config, "scatteredCharge"));
-  trace.SetScatteredEnergy(GetDouble(config, "scatteredEnergy"));
 
   const std::string multipolePath =
       GetString(config, "multipoleMapPath", "Multipole.bin");
-  trace.LoadFieldMaps(
-      multipolePath, GetString(config, "dipoleEntranceMapPath", "DipoleEntrance.bin"),
-      GetString(config, "dipoleSectorMapPath", "DipoleSector.bin"),
-      GetString(config, "dipoleExitMapPath", "DipoleExit.bin"));
+  trace.LoadFieldMaps(multipolePath,
+                      GetString(config, "dipoleEntranceMapPath",
+                                "DipoleEntrance.bin"),
+                      GetString(config, "dipoleSectorMapPath",
+                                "DipoleSector.bin"),
+                      GetString(config, "dipoleExitMapPath", "DipoleExit.bin"));
 
-  for (const mdm::RayAngle& ray : rays) {
+  for (const mdm::RayInput& ray : rays) {
     trace.SetScatteredAngle(ray.xDeg, ray.yDeg);
+    trace.SetScatteredEnergy(ray.energyMeV);
     trace.SendRay();
 
     double x1 = 0.0;
@@ -70,9 +72,10 @@ int main(int argc, char* argv[]) {
     double angX1 = 0.0;
     double angY1 = 0.0;
     trace.GetPositionAngleFirstWire(x1, y1, angX1, angY1);
-    std::printf("Scattered Angle X: %.4fdeg  Scattered Angle Y: %.4fdeg  X1: "
-                "%.4fcm  Y1: %.4fcm  AngX1: %.4fdeg  AngY1: %.4fdeg\n",
-                ray.xDeg, ray.yDeg, x1, y1, angX1, angY1);
+    std::printf("Scattered Angle X: %.4fdeg  Scattered Angle Y: %.4fdeg  "
+                "Scattered Energy: %.4fMeV  X1: %.4fcm  Y1: %.4fcm  "
+                "AngX1: %.4fdeg  AngY1: %.4fdeg\n",
+                ray.xDeg, ray.yDeg, ray.energyMeV, x1, y1, angX1, angY1);
   }
   return 0;
 }

@@ -36,7 +36,6 @@ struct Config {
   double multipoleProbe = 0.0;
   double mass = 0.0;
   double charge = 0.0;
-  double energy = 0.0;
   std::string multipoleMap = "Multipole.bin";
   std::string dipoleEntranceMap = "DipoleEntrance.bin";
   std::string dipoleSectorMap = "DipoleSector.bin";
@@ -51,7 +50,7 @@ struct Result {
 };
 
 struct Row {
-  mdm::RayAngle ray;
+  mdm::RayInput ray;
   Result legacy;
   Result fieldMap;
 };
@@ -92,7 +91,6 @@ Config ParseConfig(const Json::Value& c) {
   cfg.multipoleProbe = GetDouble(c, "mdmMultipoleProbe");
   cfg.mass = GetDouble(c, "scatteredMass");
   cfg.charge = GetDouble(c, "scatteredCharge");
-  cfg.energy = GetDouble(c, "scatteredEnergy");
   cfg.multipoleMap = GetString(c, "multipoleMapPath", "Multipole.bin");
   cfg.dipoleEntranceMap =
       GetString(c, "dipoleEntranceMapPath", "DipoleEntrance.bin");
@@ -107,7 +105,6 @@ void Configure(MDMTrace& trace, const Config& cfg) {
                  : trace.SetMDMDipoleField(cfg.dipoleField);
   trace.SetScatteredMass(cfg.mass);
   trace.SetScatteredCharge(cfg.charge);
-  trace.SetScatteredEnergy(cfg.energy);
 }
 
 void Configure(MDMFieldMapTrace& trace, const Config& cfg) {
@@ -116,22 +113,23 @@ void Configure(MDMFieldMapTrace& trace, const Config& cfg) {
                  : trace.SetMDMDipoleField(cfg.dipoleField);
   trace.SetScatteredMass(cfg.mass);
   trace.SetScatteredCharge(cfg.charge);
-  trace.SetScatteredEnergy(cfg.energy);
   trace.LoadFieldMaps(cfg.multipoleMap, cfg.dipoleEntranceMap,
                       cfg.dipoleSectorMap, cfg.dipoleExitMap);
 }
 
-Result Run(MDMTrace& trace, const mdm::RayAngle& ray) {
+Result Run(MDMTrace& trace, const mdm::RayInput& ray) {
   Result r;
   trace.SetScatteredAngle(ray.xDeg, ray.yDeg);
+  trace.SetScatteredEnergy(ray.energyMeV);
   trace.SendRay();
   trace.GetPositionAngleFirstWire(r.x, r.y, r.ax, r.ay);
   return r;
 }
 
-Result Run(MDMFieldMapTrace& trace, const mdm::RayAngle& ray) {
+Result Run(MDMFieldMapTrace& trace, const mdm::RayInput& ray) {
   Result r;
   trace.SetScatteredAngle(ray.xDeg, ray.yDeg);
+  trace.SetScatteredEnergy(ray.energyMeV);
   trace.SendRay();
   trace.GetPositionAngleFirstWire(r.x, r.y, r.ax, r.ay);
   return r;
@@ -239,14 +237,14 @@ std::string DefaultConfigPath() {
 int main(int argc, char* argv[]) {
   const Json::Value json = ReadJson(argc > 1 ? argv[1] : DefaultConfigPath());
   const Config cfg = ParseConfig(json);
-  const std::vector<mdm::RayAngle> rays = mdm::ParseRayAngles(json);
+  const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(json);
   std::vector<Row> rows;
   rows.reserve(rays.size());
 
   {
     MDMTrace trace;
     Configure(trace, cfg);
-    for (const mdm::RayAngle& ray : rays) {
+    for (const mdm::RayInput& ray : rays) {
       rows.push_back({ray, Run(trace, ray), {}});
     }
   }

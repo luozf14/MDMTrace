@@ -11,11 +11,16 @@ set (CMAKE_CXX_FLAGS "-fPIC")
 add_library(JsonCpp SHARED src/jsoncpp.cpp)
 target_include_directories(JsonCpp PUBLIC ${PROJECT_SOURCE_DIR}/include/json)
 
+# build library libMDMFieldMapTransport
+add_library (MDMFieldMapTransport SHARED
+    src/MDMFieldMap.cpp
+    src/MDMFieldMapTrace.cpp
+)
+target_include_directories(MDMFieldMapTransport PUBLIC ${PROJECT_SOURCE_DIR}/include)
+
 # build library libMDMTraceFit
 add_library (MDMTrace SHARED
     src/MDMTrace.cpp
-    src/MDMFieldMap.cpp
-    src/MDMFieldMapTrace.cpp
     src/RAYTKIN1.F
     src/MDMFieldMapInterop.F90
 )
@@ -28,13 +33,18 @@ target_link_libraries(${PROJECT_NAME} PRIVATE MDMTrace JsonCpp)
 
 add_executable(MDMFieldMapGenerator src/MDMFieldMapGenerator.cpp)
 target_include_directories(MDMFieldMapGenerator PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MDMFieldMapGenerator PRIVATE MDMTrace JsonCpp)
+target_link_libraries(MDMFieldMapGenerator PRIVATE MDMTrace MDMFieldMapTransport JsonCpp)
 
 add_executable(MDMFieldMapTraceExample MDMFieldMapTraceExample.cpp)
 target_include_directories(MDMFieldMapTraceExample PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MDMFieldMapTraceExample PRIVATE MDMTrace JsonCpp)
+target_link_libraries(MDMFieldMapTraceExample PRIVATE MDMFieldMapTransport JsonCpp)
 
-find_package(ROOT QUIET COMPONENTS Core RIO Hist Graf Gpad)
+add_executable(GenerateIonOptics GenerateIonOptics.cpp)
+target_include_directories(GenerateIonOptics PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_compile_definitions(GenerateIonOptics PRIVATE MDMTRACE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(GenerateIonOptics PRIVATE MDMFieldMapTransport JsonCpp)
+
+find_package(ROOT QUIET COMPONENTS Core RIO Hist Graf Gpad Matrix)
 if(ROOT_FOUND AND ROOT_LIBRARIES)
     set(MDMTRACE_ROOT_INCLUDE_DIRS ${ROOT_INCLUDE_DIRS})
     set(MDMTRACE_ROOT_LIBRARIES ${ROOT_LIBRARIES})
@@ -42,7 +52,7 @@ if(ROOT_FOUND AND ROOT_LIBRARIES)
 else()
     find_program(ROOT_CONFIG_EXECUTABLE root-config)
     if(NOT ROOT_CONFIG_EXECUTABLE)
-        message(FATAL_ERROR "ROOT is required to build Compare. Install ROOT or ensure root-config is on PATH.")
+        message(FATAL_ERROR "ROOT is required to build Compare and GenerateIonOptics. Install ROOT or ensure root-config is on PATH.")
     endif()
     execute_process(
         COMMAND ${ROOT_CONFIG_EXECUTABLE} --cflags
@@ -72,7 +82,11 @@ add_executable(Compare Compare.cpp)
 target_include_directories(Compare PRIVATE ${PROJECT_SOURCE_DIR}/include ${MDMTRACE_ROOT_INCLUDE_DIRS})
 target_compile_options(Compare PRIVATE ${MDMTRACE_ROOT_COMPILE_OPTIONS})
 target_compile_definitions(Compare PRIVATE MDMTRACE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-target_link_libraries(Compare PRIVATE MDMTrace JsonCpp ${MDMTRACE_ROOT_LIBRARIES})
+target_link_libraries(Compare PRIVATE MDMTrace MDMFieldMapTransport JsonCpp ${MDMTRACE_ROOT_LIBRARIES})
+
+target_include_directories(GenerateIonOptics PRIVATE ${MDMTRACE_ROOT_INCLUDE_DIRS})
+target_compile_options(GenerateIonOptics PRIVATE ${MDMTRACE_ROOT_COMPILE_OPTIONS})
+target_link_libraries(GenerateIonOptics PRIVATE ${MDMTRACE_ROOT_LIBRARIES})
 
 # copy rayin.dat from dat/ to build/
 set(DAT_FILES rayin.dat)

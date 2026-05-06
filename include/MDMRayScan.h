@@ -12,9 +12,10 @@
 
 namespace mdm {
 
-struct RayAngle {
+struct RayInput {
   double xDeg = 0.0;
   double yDeg = 0.0;
+  double energyMeV = 0.0;
 };
 
 inline double RequireNumber(const Json::Value& value,
@@ -32,18 +33,19 @@ inline double RequireNumber(const Json::Value& value,
 inline std::vector<double> BuildGridAxis(double minValue,
                                          double maxValue,
                                          double step,
+                                         const std::string& gridName,
                                          const std::string& axisName) {
   if (step <= 0.0 || !std::isfinite(step)) {
-    throw std::runtime_error("scatteredAngleGrid " + axisName +
+    throw std::runtime_error(gridName + " " + axisName +
                              "Step must be positive");
   }
   if (!std::isfinite(minValue) || !std::isfinite(maxValue)) {
-    throw std::runtime_error("scatteredAngleGrid " + axisName +
+    throw std::runtime_error(gridName + " " + axisName +
                              " range must be finite");
   }
   if (maxValue < minValue) {
-    throw std::runtime_error("scatteredAngleGrid " + axisName +
-                             "Max must be >= " + axisName + "Min");
+    throw std::runtime_error(gridName + " " + axisName + "Max must be >= " +
+                             axisName + "Min");
   }
 
   std::vector<double> values;
@@ -61,7 +63,7 @@ inline std::vector<double> BuildGridAxis(double minValue,
     values.push_back(current);
     current += step;
     if (values.size() > 1000000u) {
-      throw std::runtime_error("scatteredAngleGrid " + axisName +
+      throw std::runtime_error(gridName + " " + axisName +
                                " creates too many scan points");
     }
   }
@@ -75,12 +77,12 @@ inline std::vector<double> BuildGridAxis(double minValue,
 }
 
 inline void AppendLegacyAngles(const Json::Value& value,
-                               std::vector<RayAngle>& rays) {
+                               std::vector<RayInput>& rays) {
   if (!value.isArray()) {
     throw std::runtime_error("scatteredAngles must be an array");
   }
   for (Json::ArrayIndex index = 0; index < value.size(); ++index) {
-    RayAngle ray;
+    RayInput ray;
     ray.xDeg = RequireNumber(value[index], "scatteredAngles entry");
     ray.yDeg = 0.0;
     rays.push_back(ray);
@@ -88,7 +90,7 @@ inline void AppendLegacyAngles(const Json::Value& value,
 }
 
 inline void AppendAnglePairs(const Json::Value& value,
-                             std::vector<RayAngle>& rays) {
+                             std::vector<RayInput>& rays) {
   if (!value.isArray()) {
     throw std::runtime_error("scatteredAnglePairs must be an array");
   }
@@ -100,7 +102,7 @@ inline void AppendAnglePairs(const Json::Value& value,
               << "] must be [xDeg, yDeg]";
       throw std::runtime_error(message.str());
     }
-    RayAngle ray;
+    RayInput ray;
     ray.xDeg = RequireNumber(pair[0u], "scatteredAnglePairs x angle");
     ray.yDeg = RequireNumber(pair[1u], "scatteredAnglePairs y angle");
     rays.push_back(ray);
@@ -108,7 +110,7 @@ inline void AppendAnglePairs(const Json::Value& value,
 }
 
 inline void AppendAngleGrid(const Json::Value& value,
-                            std::vector<RayAngle>& rays) {
+                            std::vector<RayInput>& rays) {
   if (!value.isObject()) {
     throw std::runtime_error("scatteredAngleGrid must be an object");
   }
@@ -122,12 +124,14 @@ inline void AppendAngleGrid(const Json::Value& value,
   const double yStep =
       RequireNumber(value["yStep"], "scatteredAngleGrid yStep");
 
-  const std::vector<double> xValues = BuildGridAxis(xMin, xMax, xStep, "x");
-  const std::vector<double> yValues = BuildGridAxis(yMin, yMax, yStep, "y");
+  const std::vector<double> xValues =
+      BuildGridAxis(xMin, xMax, xStep, "scatteredAngleGrid", "x");
+  const std::vector<double> yValues =
+      BuildGridAxis(yMin, yMax, yStep, "scatteredAngleGrid", "y");
 
   for (double xDeg : xValues) {
     for (double yDeg : yValues) {
-      RayAngle ray;
+      RayInput ray;
       ray.xDeg = xDeg;
       ray.yDeg = yDeg;
       rays.push_back(ray);
@@ -135,21 +139,49 @@ inline void AppendAngleGrid(const Json::Value& value,
   }
 }
 
-inline std::vector<RayAngle> ParseRayAngles(const Json::Value& config) {
-  std::vector<RayAngle> rays;
+inline std::vector<double> ParseEnergies(const Json::Value& config) {
+  if (!config.isMember("scatteredEnergyGrid")) {
+    return {RequireNumber(config["scatteredEnergy"], "scatteredEnergy")};
+  }
+
+  const Json::Value& grid = config["scatteredEnergyGrid"];
+  if (!grid.isObject()) {
+    throw std::runtime_error("scatteredEnergyGrid must be an object");
+  }
+
+  const double eMin = RequireNumber(grid["eMin"], "scatteredEnergyGrid eMin");
+  const double eMax = RequireNumber(grid["eMax"], "scatteredEnergyGrid eMax");
+  const double eStep =
+      RequireNumber(grid["eStep"], "scatteredEnergyGrid eStep");
+  return BuildGridAxis(eMin, eMax, eStep, "scatteredEnergyGrid", "e");
+}
+
+inline std::vector<RayInput> ParseRayInputs(const Json::Value& config) {
+  std::vector<RayInput> angleRays;
   if (config.isMember("scatteredAngles")) {
-    AppendLegacyAngles(config["scatteredAngles"], rays);
+    AppendLegacyAngles(config["scatteredAngles"], angleRays);
   }
   if (config.isMember("scatteredAnglePairs")) {
-    AppendAnglePairs(config["scatteredAnglePairs"], rays);
+    AppendAnglePairs(config["scatteredAnglePairs"], angleRays);
   }
   if (config.isMember("scatteredAngleGrid")) {
-    AppendAngleGrid(config["scatteredAngleGrid"], rays);
+    AppendAngleGrid(config["scatteredAngleGrid"], angleRays);
   }
-  if (rays.empty()) {
+  if (angleRays.empty()) {
     throw std::runtime_error(
         "No input rays configured. Provide scatteredAngles, "
         "scatteredAnglePairs, or scatteredAngleGrid.");
+  }
+
+  const std::vector<double> energies = ParseEnergies(config);
+  std::vector<RayInput> rays;
+  rays.reserve(angleRays.size() * energies.size());
+  for (const RayInput& angleRay : angleRays) {
+    for (double energyMeV : energies) {
+      RayInput ray = angleRay;
+      ray.energyMeV = energyMeV;
+      rays.push_back(ray);
+    }
   }
   return rays;
 }

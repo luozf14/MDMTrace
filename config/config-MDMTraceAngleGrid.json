@@ -1,4 +1,4 @@
-// EXAMPLE 2D ANGULAR SCAN FOR MDMTraceExample and MDMFieldMapTraceExample
+// EXAMPLE ANGLE/ENERGY SCAN FOR MDMTraceExample and MDMFieldMapTraceExample
 {
     "usingProbe"          : 1,
     "mdmAngle"            : 0,
@@ -8,6 +8,11 @@
     "scatteredMass"       : 12,
     "scatteredCharge"     : 5,
     "scatteredEnergy"     : 18,
+    "scatteredEnergyGrid" : {
+        "eMin"  : 15.84,
+        "eMax"  : 20.16,
+        "eStep" : 0.1
+    },
 
     // Legacy horizontal-only rays are still accepted:
     // "scatteredAngles" : [1],
@@ -17,11 +22,11 @@
 
     // Grid rays are generated x-major: each x value scans all y values.
     "scatteredAngleGrid"  : {
-        "xMin"  : -1.9,
-        "xMax"  : 1.9,
+        "xMin"  : -1.0,
+        "xMax"  : 1.0,
         "xStep" : 0.1,
-        "yMin"  : -1.9,
-        "yMax"  : 1.9,
+        "yMin"  : -1.0,
+        "yMax"  : 1.0,
         "yStep" : 0.1
     },
 

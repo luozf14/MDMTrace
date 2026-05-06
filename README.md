@@ -10,18 +10,19 @@ This repository currently models one specific MDM configuration:
 
 ## Overview
 
-The project has four main user-facing executables:
+The project has five main user-facing executables:
 
 - `MDMTraceExample`: runs the original Fortran RAYTRACE transport through the deck.
 - `MDMFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`.
 - `MDMFieldMapTraceExample`: transports ions through the generated field maps and compares against the original tracer output format.
-- `Compare`: runs both transport paths for the 2D angle-grid config and writes ROOT comparison plots.
+- `Compare`: runs both transport paths for the angle/energy-grid config and writes ROOT comparison plots.
+- `GenerateIonOptics`: fits first- and second-order ion-optical maps from many field-map-traced rays.
 
 At the library level, the repo exposes three main C++ interfaces:
 
 - `MDMTrace`: thin wrapper around the original Fortran tracer and common blocks.
 - `MDMFieldMap`: binary field-map loader, saver, and trilinear interpolator.
-- `MDMFieldMapTrace`: field-map-based transport validator for the current MDM beamline.
+- `MDMFieldMapTrace`: Fortran-free field-map-based transport validator for the current MDM beamline.
 
 ## Repository Structure
 
@@ -32,6 +33,7 @@ At the library level, the repo exposes three main C++ interfaces:
 - `MDMTraceExample.C`: example executable for the original Fortran transport.
 - `MDMFieldMapTraceExample.cpp`: example executable for the field-map validator.
 - `Compare.cpp`: ROOT comparison executable for legacy-vs-field-map validation.
+- `GenerateIonOptics.cpp`: field-map-based first-/second-order ion-optics fitter.
 - `raytrace1.pdf`, `raytrace2.pdf`, `raytrace3.pdf`: original RAYTRACE manuals.
 
 ## Build
@@ -49,6 +51,7 @@ The build produces:
 - `build/MDMFieldMapGenerator`
 - `build/MDMFieldMapTraceExample`
 - `build/Compare`
+- `build/GenerateIonOptics`
 
 During configuration, CMake copies `dat/rayin.dat` into `build/`. Running the executables from `build/` is the intended default workflow.
 
@@ -77,15 +80,15 @@ Input:
 
 Output:
 
-- setup diagnostics on stderr,
 - one final line per requested input ray on stdout in the form
-  `Scattered Angle X: ... Scattered Angle Y: ... X1: ... Y1: ... AngX1: ... AngY1: ...`
+  `Scattered Angle X: ... Scattered Angle Y: ... Scattered Energy: ... X1: ... Y1: ... AngX1: ... AngY1: ...`
 
 Notes:
 
 - This executable uses the original Fortran tracer directly.
 - `scatteredAngles` remains supported as a legacy horizontal-only scan with vertical angle fixed to `0`.
 - Use `scatteredAnglePairs` or `scatteredAngleGrid` to scan nonzero vertical input angles.
+- Use `scatteredEnergyGrid` to scan kinetic energy in MeV.
 
 ### `MDMFieldMapGenerator`
 
@@ -125,7 +128,7 @@ Notes:
 
 ### `MDMFieldMapTraceExample`
 
-Purpose: transport ions through `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` while keeping drifts and collimators from the current deck, then print the same final result format as `MDMTraceExample`.
+Purpose: transport ions through `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` with the current MDM beamline geometry compiled into C++, then print the same final result format as `MDMTraceExample`.
 
 Syntax:
 
@@ -160,6 +163,7 @@ Notes:
 
 - If no map paths are provided, the executable looks for `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` in the current working directory.
 - The validator checks that the requested magnet settings match the metadata stored in the loaded maps. It rejects mismatches instead of silently rescaling the fields.
+- This executable does not link or call the Fortran RAYTRACE code. The drift lengths, collimators, and magnet transforms are C++ constants extracted from the active `rayin.dat` setup.
 
 ### `Compare`
 
@@ -189,8 +193,40 @@ Output:
 Notes:
 
 - The default config is `${PROJECT_SOURCE_DIR}/config/config-MDMTraceAngleGrid.json`.
-- The config can use the same ray-scan keys as the examples: `scatteredAngles`, `scatteredAnglePairs`, or `scatteredAngleGrid`.
+- The config can use the same ray-scan keys as the examples: `scatteredAngles`, `scatteredAnglePairs`, `scatteredAngleGrid`, and `scatteredEnergyGrid`.
 - Residuals use the `Legacy - FieldMap` convention.
+
+### `GenerateIonOptics`
+
+Purpose: trace a 5D input grid through the generated field maps and fit a first- or second-order ion-optical map.
+
+Syntax:
+
+```bash
+./GenerateIonOptics [config-file]
+```
+
+Example:
+
+```bash
+cd build
+./GenerateIonOptics
+```
+
+Output:
+
+- `IonOpticsMatrix.txt` by default
+- the same report on stdout
+- reference output, fit-grid summary, solver, thread count, accepted/stopped ray counts, residual summary, the 5x5 first-order matrix, and second-order coefficients when enabled
+
+Notes:
+
+- The default config is `${PROJECT_SOURCE_DIR}/config/config-MDMFieldMapTraceExample.json`.
+- The fitted vector is `[x mm, thetaX mrad, y mm, thetaY mrad, deltaP/P0 %]`, where `deltaP/P0 % = 100 * (p - p0) / p0`.
+- The output vector is `[X1 mm, AngX1 mrad, Y1 mm, AngY1 mrad, deltaP/P0 %]`.
+- The default fit order is `2`. Order `1` prints only the first-order `R` matrix.
+- The fit uses ROOT `TDecompSVD` on the normal matrix and parallel field-map tracing.
+- Aperture-stopped rays are skipped in the fit and counted in the report.
 
 ## JSON Configuration
 
@@ -207,12 +243,13 @@ These keys are used by `MDMTraceExample` and `MDMFieldMapTraceExample`.
 | `mdmMultipoleProbe` | Entrance multipole hall-probe value. |
 | `scatteredMass` | Ion mass in AMU. |
 | `scatteredCharge` | Ion charge state in units of `e`. |
-| `scatteredEnergy` | Ion kinetic energy in MeV. |
+| `scatteredEnergy` | Ion kinetic energy in MeV. Used as the single fallback energy when `scatteredEnergyGrid` is absent. |
+| `scatteredEnergyGrid` | Optional kinetic-energy grid object with `eMin`, `eMax`, and `eStep`, all in MeV. |
 | `scatteredAngles` | Legacy list of horizontal scattering angles in degrees. Each entry generates `(xDeg, yDeg) = (angle, 0)`. |
 | `scatteredAnglePairs` | Explicit 2D input rays as `[[xDeg, yDeg], ...]`. |
 | `scatteredAngleGrid` | 2D angular grid object with `xMin`, `xMax`, `xStep`, `yMin`, `yMax`, and `yStep`, all in degrees. |
 
-If multiple ray-scan keys are present, rays are concatenated in this order: `scatteredAngles`, `scatteredAnglePairs`, then `scatteredAngleGrid`. Grid scan ordering is x-major: for each x angle, all y angles are scanned. Grid steps must be positive, ranges must satisfy `max >= min`, and the generated grid always includes both endpoints.
+If multiple angle-scan keys are present, angle rays are concatenated in this order: `scatteredAngles`, `scatteredAnglePairs`, then `scatteredAngleGrid`. Grid scan ordering is x-major: for each x angle, all y angles are scanned. If `scatteredEnergyGrid` is present, each angle ray is crossed with all energy values in ascending energy order. Grid steps must be positive, ranges must satisfy `max >= min`, and generated grids always include both endpoints.
 
 ### Generator Keys
 
@@ -241,6 +278,49 @@ These keys are optional and are used only by `MDMFieldMapTraceExample`.
 | `dipoleSectorMapPath` | Path to sector dipole map. Defaults to `DipoleSector.bin`. |
 | `dipoleExitMapPath` | Path to exit-fringe dipole map. Defaults to `DipoleExit.bin`. |
 
+### Ion-Optics Fit Keys
+
+These keys are optional and are used by `GenerateIonOptics` inside the `ionOptics` object.
+
+| Key | Meaning |
+| --- | --- |
+| `method` | Must be `fit`. Finite-difference ion optics is no longer used. |
+| `order` | Polynomial order: `1` or `2`. Defaults to `2`. |
+| `threads` | Number of worker threads for field-map tracing. `0` or missing uses hardware concurrency; `1` forces serial tracing. |
+| `maxRays` | Safety limit for the generated fit grid. Defaults to `1000000`; the program errors clearly if the grid is larger. |
+| `reference` | Reference ray object with `xMm`, `thetaXMrad`, `yMm`, `thetaYMrad`, and `energyMeV`. |
+| `fitGrid` | Input grid object used for the least-squares matrix fit. |
+| `outputPath` | Text output path. Defaults to `IonOpticsMatrix.txt`. |
+
+The `fitGrid` object uses these keys:
+
+| Key | Meaning |
+| --- | --- |
+| `xMinMm`, `xMaxMm`, `xStepMm` | Horizontal input-position grid in mm. |
+| `thetaXMinMrad`, `thetaXMaxMrad`, `thetaXStepMrad` | Horizontal input-angle grid in mrad. |
+| `yMinMm`, `yMaxMm`, `yStepMm` | Vertical input-position grid in mm. |
+| `thetaYMinMrad`, `thetaYMaxMrad`, `thetaYStepMrad` | Vertical input-angle grid in mrad. |
+| `deltaMin`, `deltaMax`, `deltaStep` | Momentum-offset grid in percent, `deltaP/P0 % = 100 * (p - p0) / p0`. |
+
+For each accepted ray, the first-order fit uses:
+
+```text
+output - referenceOutput = R * q
+q = input - referenceInput
+```
+
+For `order = 2`, the fitter uses:
+
+```text
+output - referenceOutput = R * q + T * (q_j * q_k)
+```
+
+Only unique second-order products with `j <= k` are printed. The printed `T` coefficients multiply `q_j*q_k` directly; no `1/2` factor is applied.
+
+The momentum coordinate is stored and fitted in percent. Internally, the tracer converts each fitted ray to kinetic energy using `p = p0 * (1 + deltaP/P0[%] / 100)`.
+
+The last matrix row is fixed to `[0, 0, 0, 0, 1]` because the field-map transport has no energy-loss model.
+
 ## Physics And Modeling Conventions
 
 ### Beamline Sequence
@@ -256,7 +336,7 @@ For the current deck, the transport sequence is:
 7. exit collimator
 8. final drift
 
-The field-map validator uses the same sequence. It transports through the two active magnetic elements with the saved maps and handles the zero-field sections separately in C++.
+The field-map validator uses the same sequence. It transports through the two active magnetic elements with the saved maps and handles the zero-field sections separately in C++. Its geometry constants are copied from the active `rayin.dat` setup, but it does not read `rayin.dat` or call Fortran at runtime.
 
 ### Magnet Setting Conventions
 
@@ -292,7 +372,7 @@ v = sqrt((2m + E)E) / (m + E) * c
 
 - the field-map validator uses the same four-stage Runge-Kutta structure as RAYTRACE for the magnetic elements
 - drifts are transported as straight-line segments
-- collimators are enforced from `rayin.dat`
+- collimators are enforced from C++ constants copied from `rayin.dat`
 
 ### Coordinate Conventions
 
