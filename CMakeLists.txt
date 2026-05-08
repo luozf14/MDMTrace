@@ -45,6 +45,10 @@ add_executable(MDMFieldMapTraceExample MDMFieldMapTraceExample.cpp)
 target_include_directories(MDMFieldMapTraceExample PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(MDMFieldMapTraceExample PRIVATE MDMFieldMapTransport JsonCpp)
 
+add_executable(FindMDMField FindMDMField.cpp)
+target_include_directories(FindMDMField PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(FindMDMField PRIVATE MDMTrace JsonCpp)
+
 add_executable(GenerateIonOptics GenerateIonOptics.cpp)
 target_include_directories(GenerateIonOptics PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_compile_definitions(GenerateIonOptics PRIVATE MDMTRACE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

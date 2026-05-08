@@ -1,0 +1,18 @@
+// Tune one scalar MDM dipole field for a given ion using legacy RAYTRACE.
+{
+    "mdmAngle"        : 0,
+    "scatteredMass"   : 12,
+    "scatteredCharge" : 5,
+    "scatteredEnergy" : 18,
+
+    "fieldFinder": {
+        "inputAngleXDeg"          : 0.0,
+        "inputAngleYDeg"          : 0.0,
+        "positionScaleCm"         : 0.1,
+        "angleScaleDeg"           : 0.1,
+        "searchHalfWidthFraction" : 0.25,
+        "coarseSamples"           : 101,
+        "fieldToleranceGauss"     : 0.001,
+        "maxIterations"           : 1e3
+    }
+}

@@ -16,7 +16,8 @@ The project has five main user-facing executables:
 - `MDMFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`.
 - `MDMFieldMapTraceExample`: transports ions through the generated field maps and compares against the original tracer output format.
 - `Compare`: runs both transport paths for the angle/energy-grid config and writes ROOT comparison plots.
-- `GenerateIonOptics`: fits first- and second-order ion-optical maps from many field-map-traced rays.
+- `GenerateIonOptics`: fits ion-optical maps up to fifth order from many field-map-traced rays.
+- `FindMDMField`: tunes the scalar MDM dipole field for a requested ion using legacy RAYTRACE.
 
 At the library level, the repo exposes three main C++ interfaces:
 
@@ -33,7 +34,8 @@ At the library level, the repo exposes three main C++ interfaces:
 - `MDMTraceExample.C`: example executable for the original Fortran transport.
 - `MDMFieldMapTraceExample.cpp`: example executable for the field-map validator.
 - `Compare.cpp`: ROOT comparison executable for legacy-vs-field-map validation.
-- `GenerateIonOptics.cpp`: field-map-based first-/second-order ion-optics fitter.
+- `GenerateIonOptics.cpp`: field-map-based ion-optics fitter up to fifth order.
+- `FindMDMField.cpp`: legacy-RAYTRACE field-setting tuner.
 - `raytrace1.pdf`, `raytrace2.pdf`, `raytrace3.pdf`: original RAYTRACE manuals.
 
 ## Build
@@ -54,6 +56,7 @@ The build produces:
 - `build/MDMFieldMapTraceExample`
 - `build/Compare`
 - `build/GenerateIonOptics`
+- `build/FindMDMField`
 
 During configuration, CMake copies `dat/rayin.dat` into `build/`. Running the executables from `build/` is the intended default workflow.
 
@@ -193,7 +196,7 @@ Notes:
 
 ### `GenerateIonOptics`
 
-Purpose: trace a 5D input grid through the generated field maps and fit a first- or second-order ion-optical map.
+Purpose: trace a 5D input grid through the generated field maps and fit an ion-optical map up to fifth order.
 
 Syntax:
 
@@ -212,16 +215,47 @@ Output:
 
 - `IonOpticsMatrix.txt` by default
 - the same report on stdout
-- reference output, fit-grid summary, solver, thread count, accepted/stopped ray counts, residual summary, the 5x5 first-order matrix, and second-order coefficients when enabled
+- reference output, fit-grid summary, solver, thread count, accepted/stopped ray counts, residual summary, a human-readable first-order matrix with determinant, and a COSY-style coefficient map
 
 Notes:
 
 - The default config is `${PROJECT_SOURCE_DIR}/config/MDM.json`.
 - The fitted vector is `[x mm, thetaX mrad, y mm, thetaY mrad, deltaP/P0 %]`, where `deltaP/P0 % = 100 * (p - p0) / p0`.
 - The output vector is `[X1 mm, AngX1 mrad, Y1 mm, AngY1 mrad, deltaP/P0 %]`.
-- The default fit order is `2`. Order `1` prints only the first-order `R` matrix.
+- The default fit order is `2`. Higher orders are selected with `ionOptics.order`.
 - The fit uses ROOT `TDecompSVD` on the normal matrix and parallel field-map tracing.
 - Aperture-stopped rays are skipped in the fit and counted in the report.
+
+### `FindMDMField`
+
+Purpose: compute an initial MDM dipole field from ion rigidity, then tune the dipole field so the first-wire output ray is as close as possible to `X1=Y1=AngX1=AngY1=0`.
+
+Syntax:
+
+```bash
+./FindMDMField [config-file]
+```
+
+Example:
+
+```bash
+cd build
+./FindMDMField ../config/MDMFindField.json
+```
+
+Output:
+
+- initial rigidity field in Gauss
+- tuned `mdmDipoleField`
+- equivalent `mdmDipoleProbe = field / 1.034`
+- equivalent `mdmMultipoleProbe = mdmDipoleProbe * 0.71`
+- final `X1`, `Y1`, `AngX1`, `AngY1`, and weighted residual
+
+Notes:
+
+- This executable uses legacy RAYTRACE directly, not field maps, because the generated field maps encode one fixed magnet setting.
+- The tuned scalar is `mdmDipoleField` in Gauss. The entrance multipole follows the existing fixed relation through `MDMTrace::SetMDMDipoleField`.
+- One scalar field may not make all four output quantities exactly zero, so the result is the best weighted compromise.
 
 ## JSON Configuration
 
@@ -287,7 +321,7 @@ These keys are optional and are used by `GenerateIonOptics` inside the `ionOptic
 | Key | Meaning |
 | --- | --- |
 | `method` | Must be `fit`. Finite-difference ion optics is no longer used. |
-| `order` | Polynomial order: `1` or `2`. Defaults to `2`. |
+| `order` | Polynomial order from `1` through `5`. Defaults to `2`. |
 | `threads` | Number of worker threads for field-map tracing. `0` or missing uses hardware concurrency; `1` forces serial tracing. |
 | `maxRays` | Safety limit for the generated fit grid. Defaults to `1000000`; the program errors clearly if the grid is larger. |
 | `reference` | Reference ray object with `xMm`, `thetaXMrad`, `yMm`, `thetaYMrad`, and `energyMeV`. |
@@ -304,24 +338,54 @@ The `fitGrid` object uses these keys:
 | `thetaYMinMrad`, `thetaYMaxMrad`, `thetaYStepMrad` | Vertical input-angle grid in mrad. |
 | `deltaMin`, `deltaMax`, `deltaStep` | Momentum-offset grid in percent, `deltaP/P0 % = 100 * (p - p0) / p0`. |
 
-For each accepted ray, the first-order fit uses:
+For each accepted ray, the fit expands around the reference ray:
 
 ```text
-output - referenceOutput = R * q
 q = input - referenceInput
+output - referenceOutput = sum C_m * monomial_m(q)
 ```
 
-For `order = 2`, the fitter uses:
+Terms are generated by degree from 1 up to `order`. The number of fitted basis terms is 5, 20, 55, 125, and 251 for orders 1 through 5. Coefficients multiply monomials directly; no factorial factors such as `1/2` or `1/6` are applied.
 
-```text
-output - referenceOutput = R * q + T * (q_j * q_k)
-```
+The output first prints a human-readable first-order matrix and `det(first-order R)`, then a COSY Infinity printed-map-style coefficient block. Each COSY-style row contains the five output-coordinate coefficients followed by an exponent code for the input monomial. For this project the exponent code has five digits in the order `x thetaX y thetaY deltaP/P0[%]`; for example, `20100` means `x^2*y`. Human-readable first-order coefficients with absolute value below `1e-10` are printed as zero, while the COSY-style rows keep the fitted values.
 
-Only unique second-order products with `j <= k` are printed. The printed `T` coefficients multiply `q_j*q_k` directly; no `1/2` factor is applied.
+High-order full-grid fits can be much slower and produce large text output. Use `maxRays` as a practical safety limit when increasing the order or widening the grid.
 
 The momentum coordinate is stored and fitted in percent. Internally, the tracer converts each fitted ray to kinetic energy using `p = p0 * (1 + deltaP/P0[%] / 100)`.
 
 The last matrix row is fixed to `[0, 0, 0, 0, 1]` because the field-map transport has no energy-loss model.
+
+### Field-Finder Keys
+
+`FindMDMField` uses the top-level `mdmAngle`, `scatteredMass`, `scatteredCharge`, and `scatteredEnergy` keys plus a `fieldFinder` object.
+
+| Key | Meaning |
+| --- | --- |
+| `inputAngleXDeg`, `inputAngleYDeg` | Input ray angles in degrees. |
+| `positionScaleCm` | Position scale used in the weighted residual. |
+| `angleScaleDeg` | Angle scale used in the weighted residual. |
+| `searchHalfWidthFraction` | Initial search half-width around the rigidity estimate. |
+| `coarseSamples` | Number of fields in each coarse scan. |
+| `fieldToleranceGauss` | Golden-section stopping tolerance. |
+| `maxIterations` | Maximum golden-section iterations. |
+
+The initial estimate is:
+
+```text
+m = scatteredMass * 931.48 MeV
+p = sqrt((2*m + T) * T)
+BRho[kG cm] = p / (0.299792458 * charge)
+mdmDipoleField[G] = 1000 * BRho / 160
+```
+
+The minimized objective is:
+
+```text
+chi2 = (X1/positionScaleCm)^2
+     + (Y1/positionScaleCm)^2
+     + (AngX1/angleScaleDeg)^2
+     + (AngY1/angleScaleDeg)^2
+```
 
 ## Physics And Modeling Conventions
 
