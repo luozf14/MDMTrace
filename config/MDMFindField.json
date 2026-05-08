@@ -2,7 +2,7 @@
 {
     "mdmAngle"        : 0,
     "scatteredMass"   : 12,
-    "scatteredCharge" : 5,
+    "scatteredCharge" : 6,
     "scatteredEnergy" : 18,
 
     "fieldFinder": {

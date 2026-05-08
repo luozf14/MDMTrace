@@ -2,25 +2,25 @@
 {
     "usingProbe"          : 1,
     "mdmAngle"            : 0,
-    "mdmDipoleField"      : 2645,
-    "mdmDipoleProbe"      : 2558.03,
-    "mdmMultipoleProbe"   : 1816.2,
+    "mdmDipoleField"      : 2648.69673965,
+    "mdmDipoleProbe"      : 2561.60226272,
+    "mdmMultipoleProbe"   : 1818.73760653,
 
     "scatteredMass"       : 12,
     "scatteredCharge"     : 5,
     "scatteredEnergy"     : 18,
     "scatteredEnergyGrid" : {
-        "eMin"  : 17.84,
-        "eMax"  : 19.16,
+        "eMin"  : 17.0,
+        "eMax"  : 19.0,
         "eStep" : 0.1
     },
 
     "scatteredAngleGrid"  : {
-        "xMin"  : -1.0,
-        "xMax"  : 1.0,
+        "xMin"  : -1.9,
+        "xMax"  : 1.9,
         "xStep" : 0.1,
-        "yMin"  : -1.0,
-        "yMax"  : 1.0,
+        "yMin"  : -1.9,
+        "yMax"  : 1.9,
         "yStep" : 0.1
     },
 

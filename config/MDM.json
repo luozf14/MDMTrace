@@ -1,16 +1,16 @@
 // Main MDM setup used by the generator, trace examples, and ion-optics fit.
 // Extra keys are ignored by tools that do not need them.
 {
-    "usingProbe"          : 1,
+    "usingProbe"          : 0,
     "mdmAngle"            : 0,
-    "mdmDipoleField"      : 2645,
-    "mdmDipoleProbe"      : 2558.03,
-    "mdmMultipoleProbe"   : 1816.2,
+    "mdmDipoleField"      : 2207.24728304,
+    "mdmDipoleProbe"      : 2561.60226272,
+    "mdmMultipoleProbe"   : 1818.73760653,
 
     "scatteredMass"       : 12,
     "scatteredCharge"     : 5,
     "scatteredEnergy"     : 18,
-    "scatteredAngles"     : [1],
+    "scatteredAngles"     : [0],
 
     "fieldMapSpacingMm"   : 5.0,
     "outputDirectory"     : ".",
@@ -33,25 +33,25 @@
             "energyMeV"  : 18.0
         },
         "method": "fit",
-        "order": 2,
+        "order": 5,
         "threads": 0,
-        "maxRays": 1000000,
+        "maxRays": 1e8,
         "fitGrid": {
             "xMinMm"         : -5.0,
             "xMaxMm"         :  5.0,
             "xStepMm"        :  1.0,
-            "thetaXMinMrad"  : -10.0,
-            "thetaXMaxMrad"  :  10.0,
+            "thetaXMinMrad"  : -34.5,
+            "thetaXMaxMrad"  :  34.5,
             "thetaXStepMrad" :  2.5,
             "yMinMm"         : -5.0,
             "yMaxMm"         :  5.0,
             "yStepMm"        :  1.0,
-            "thetaYMinMrad"  : -10.0,
-            "thetaYMaxMrad"  :  10.0,
+            "thetaYMinMrad"  : -34.5,
+            "thetaYMaxMrad"  :  34.5,
             "thetaYStepMrad" :  2.5,
             "deltaMin"       : -5,
             "deltaMax"       :  5,
-            "deltaStep"      :  0.5
+            "deltaStep"      :  0.25
         },
         "outputPath": "IonOpticsMatrix.txt"
     }
