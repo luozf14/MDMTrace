@@ -73,7 +73,7 @@ Example:
 
 ```bash
 cd build
-./MDMTraceExample ../config/config-MDMTraceExample.json
+./MDMTraceExample ../config/MDMTraceExample.json
 ```
 
 Input:
@@ -106,7 +106,7 @@ Example:
 
 ```bash
 cd build
-./MDMFieldMapGenerator ../config/config-MDMFieldMapGenerator.json
+./MDMFieldMapGenerator ../config/FieldMapGenerator.json
 ```
 
 Input:
@@ -142,14 +142,14 @@ Example with default map paths:
 
 ```bash
 cd build
-./MDMFieldMapTraceExample ../config/config-MDMTraceExample.json
+./MDMFieldMapTraceExample ../config/MDMTraceExample.json
 ```
 
 Example with explicit map paths:
 
 ```bash
 cd build
-./MDMFieldMapTraceExample ../config/config-MDMFieldMapTraceExample.json
+./MDMFieldMapTraceExample ../config/FieldMapTraceExample.json
 ```
 
 Input:
@@ -169,7 +169,7 @@ Notes:
 
 ### `Compare`
 
-Purpose: run legacy RAYTRACE transport and field-map transport for `config/config-MDMTraceAngleGrid.json`, then write four ROOT comparison canvases.
+Purpose: run legacy RAYTRACE transport and field-map transport for `config/MDMTraceAngleGrid.json`, then write four ROOT comparison canvases.
 
 Syntax:
 
@@ -194,7 +194,7 @@ Output:
 
 Notes:
 
-- The default config is `${PROJECT_SOURCE_DIR}/config/config-MDMTraceAngleGrid.json`.
+- The default config is `${PROJECT_SOURCE_DIR}/config/MDMTraceAngleGrid.json`.
 - The config can use the same ray-scan keys as the examples: `scatteredAngles`, `scatteredAnglePairs`, `scatteredAngleGrid`, and `scatteredEnergyGrid`.
 - Residuals use the `Legacy - FieldMap` convention.
 
@@ -223,7 +223,7 @@ Output:
 
 Notes:
 
-- The default config is `${PROJECT_SOURCE_DIR}/config/config-MDMFieldMapTraceExample.json`.
+- The default config is `${PROJECT_SOURCE_DIR}/config/FieldMapTraceExample.json`.
 - The fitted vector is `[x mm, thetaX mrad, y mm, thetaY mrad, deltaP/P0 %]`, where `deltaP/P0 % = 100 * (p - p0) / p0`.
 - The output vector is `[X1 mm, AngX1 mrad, Y1 mm, AngY1 mrad, deltaP/P0 %]`.
 - The default fit order is `2`. Order `1` prints only the first-order `R` matrix.
@@ -515,16 +515,16 @@ The intended workflow is:
 cmake -S . -B build
 cmake --build build -j4
 cd build
-./MDMFieldMapGenerator ../config/config-MDMFieldMapGenerator.json
-./MDMTraceExample ../config/config-MDMTraceExample.json
-./MDMFieldMapTraceExample ../config/config-MDMTraceExample.json
+./MDMFieldMapGenerator ../config/FieldMapGenerator.json
+./MDMTraceExample ../config/MDMTraceExample.json
+./MDMFieldMapTraceExample ../config/MDMTraceExample.json
 ```
 
 For a wider angular scan that includes rays off the median plane:
 
 ```bash
-./MDMTraceExample ../config/config-MDMTraceAngleGrid.json
-./MDMFieldMapTraceExample ../config/config-MDMTraceAngleGrid.json
+./MDMTraceExample ../config/MDMTraceAngleGrid.json
+./MDMFieldMapTraceExample ../config/MDMTraceAngleGrid.json
 ```
 
 Compare the final values:

@@ -229,7 +229,7 @@ void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
 
 std::string DefaultConfigPath() {
   return std::string(MDMTRACE_SOURCE_DIR) +
-         "/config/config-MDMTraceAngleGrid.json";
+         "/config/MDMTraceAngleGrid.json";
 }
 
 }  // namespace

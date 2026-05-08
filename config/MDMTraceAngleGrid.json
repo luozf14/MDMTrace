@@ -9,8 +9,8 @@
     "scatteredCharge"     : 5,
     "scatteredEnergy"     : 18,
     "scatteredEnergyGrid" : {
-        "eMin"  : 15.84,
-        "eMax"  : 20.16,
+        "eMin"  : 17.84,
+        "eMax"  : 19.16,
         "eStep" : 0.1
     },
 
