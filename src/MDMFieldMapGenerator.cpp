@@ -36,6 +36,8 @@ struct GridSpec {
 };
 
 struct GeneratorConfig {
+  bool usingProbe = false;
+  double mdmDipoleField = 0.0;
   double mdmDipoleProbe = 0.0;
   double mdmMultipoleProbe = 0.0;
   double fieldMapSpacingMm = 0.0;
@@ -181,8 +183,18 @@ GeneratorConfig ReadConfig(const std::string& path) {
   stream >> config;
 
   GeneratorConfig result;
-  result.mdmDipoleProbe = config["mdmDipoleProbe"].asDouble();
-  result.mdmMultipoleProbe = config["mdmMultipoleProbe"].asDouble();
+  result.usingProbe =
+      config.isMember("usingProbe") && config["usingProbe"].asBool();
+  result.mdmDipoleField =
+      config.isMember("mdmDipoleField") ? config["mdmDipoleField"].asDouble()
+                                        : 0.0;
+  if (result.usingProbe) {
+    result.mdmDipoleProbe = config["mdmDipoleProbe"].asDouble();
+    result.mdmMultipoleProbe = config["mdmMultipoleProbe"].asDouble();
+  } else {
+    result.mdmDipoleProbe = result.mdmDipoleField / 1.034;
+    result.mdmMultipoleProbe = result.mdmDipoleProbe * 0.71;
+  }
   if (!config.isMember("fieldMapSpacingMm")) {
     throw std::runtime_error(
         "Missing required generator config key: fieldMapSpacingMm");
