@@ -28,7 +28,7 @@ At the library level, the repo exposes three main C++ interfaces:
 
 - `src/`: Fortran RAYTRACE source and the C++ implementations.
 - `include/`: public C++ headers.
-- `config/`: example JSON config files for the example apps and generator.
+- `config/`: two self-contained JSON configs, `MDM.json` for normal use and `MDMScan.json` for scan/comparison runs.
 - `dat/`: the active RAYTRACE optics deck, `rayin.dat`.
 - `MDMTraceExample.C`: example executable for the original Fortran transport.
 - `MDMFieldMapTraceExample.cpp`: example executable for the field-map validator.
@@ -73,7 +73,7 @@ Example:
 
 ```bash
 cd build
-./MDMTraceExample ../config/MDMTraceExample.json
+./MDMTraceExample ../config/MDM.json
 ```
 
 Input:
@@ -106,7 +106,7 @@ Example:
 
 ```bash
 cd build
-./MDMFieldMapGenerator ../config/FieldMapGenerator.json
+./MDMFieldMapGenerator ../config/MDM.json
 ```
 
 Input:
@@ -138,18 +138,11 @@ Syntax:
 ./MDMFieldMapTraceExample <config-file>
 ```
 
-Example with default map paths:
+Example:
 
 ```bash
 cd build
-./MDMFieldMapTraceExample ../config/MDMTraceExample.json
-```
-
-Example with explicit map paths:
-
-```bash
-cd build
-./MDMFieldMapTraceExample ../config/FieldMapTraceExample.json
+./MDMFieldMapTraceExample ../config/MDM.json
 ```
 
 Input:
@@ -169,7 +162,7 @@ Notes:
 
 ### `Compare`
 
-Purpose: run legacy RAYTRACE transport and field-map transport for `config/MDMTraceAngleGrid.json`, then write four ROOT comparison canvases.
+Purpose: run legacy RAYTRACE transport and field-map transport for `config/MDMScan.json`, then write four ROOT comparison canvases.
 
 Syntax:
 
@@ -194,7 +187,7 @@ Output:
 
 Notes:
 
-- The default config is `${PROJECT_SOURCE_DIR}/config/MDMTraceAngleGrid.json`.
+- The default config is `${PROJECT_SOURCE_DIR}/config/MDMScan.json`.
 - The config can use the same ray-scan keys as the examples: `scatteredAngles`, `scatteredAnglePairs`, `scatteredAngleGrid`, and `scatteredEnergyGrid`.
 - Residuals use the `Legacy - FieldMap` convention.
 
@@ -223,7 +216,7 @@ Output:
 
 Notes:
 
-- The default config is `${PROJECT_SOURCE_DIR}/config/FieldMapTraceExample.json`.
+- The default config is `${PROJECT_SOURCE_DIR}/config/MDM.json`.
 - The fitted vector is `[x mm, thetaX mrad, y mm, thetaY mrad, deltaP/P0 %]`, where `deltaP/P0 % = 100 * (p - p0) / p0`.
 - The output vector is `[X1 mm, AngX1 mrad, Y1 mm, AngY1 mrad, deltaP/P0 %]`.
 - The default fit order is `2`. Order `1` prints only the first-order `R` matrix.
@@ -231,6 +224,13 @@ Notes:
 - Aperture-stopped rays are skipped in the fit and counted in the report.
 
 ## JSON Configuration
+
+The repository uses two JSON files:
+
+- `config/MDM.json`: normal setup used by the field-map generator, single-ray examples, field-map trace example, and ion-optics fit.
+- `config/MDMScan.json`: larger angle/energy scan used by `Compare` and optional scan runs of the two trace examples.
+
+There is no include or inheritance mechanism. Each file is self-contained, and executables ignore top-level keys they do not use.
 
 ### Shared Transport Keys
 
@@ -515,16 +515,16 @@ The intended workflow is:
 cmake -S . -B build
 cmake --build build -j4
 cd build
-./MDMFieldMapGenerator ../config/FieldMapGenerator.json
-./MDMTraceExample ../config/MDMTraceExample.json
-./MDMFieldMapTraceExample ../config/MDMTraceExample.json
+./MDMFieldMapGenerator ../config/MDM.json
+./MDMTraceExample ../config/MDM.json
+./MDMFieldMapTraceExample ../config/MDM.json
 ```
 
 For a wider angular scan that includes rays off the median plane:
 
 ```bash
-./MDMTraceExample ../config/MDMTraceAngleGrid.json
-./MDMFieldMapTraceExample ../config/MDMTraceAngleGrid.json
+./MDMTraceExample ../config/MDMScan.json
+./MDMFieldMapTraceExample ../config/MDMScan.json
 ```
 
 Compare the final values:

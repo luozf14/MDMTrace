@@ -616,8 +616,7 @@ TransferMap FitTransferMap(const std::vector<FitSample>& samples,
 }
 
 std::string DefaultConfigPath() {
-  return std::string(MDMTRACE_SOURCE_DIR) +
-         "/config/FieldMapTraceExample.json";
+  return std::string(MDMTRACE_SOURCE_DIR) + "/config/MDM.json";
 }
 
 void WriteAxis(std::ostream& out, const char* label, const Axis& axis) {

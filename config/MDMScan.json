@@ -1,10 +1,11 @@
-// EXAMPLE ANGLE/ENERGY SCAN FOR MDMTraceExample and MDMFieldMapTraceExample
+// Self-contained angle/energy scan for validation and ROOT comparison.
 {
     "usingProbe"          : 1,
     "mdmAngle"            : 0,
     "mdmDipoleField"      : 2645,
     "mdmDipoleProbe"      : 2558.03,
     "mdmMultipoleProbe"   : 1816.2,
+
     "scatteredMass"       : 12,
     "scatteredCharge"     : 5,
     "scatteredEnergy"     : 18,
@@ -14,13 +15,6 @@
         "eStep" : 0.1
     },
 
-    // Legacy horizontal-only rays are still accepted:
-    // "scatteredAngles" : [1],
-
-    // Explicit 2D rays are also accepted:
-    // "scatteredAnglePairs" : [[0.5, -0.5], [1.0, 0.0], [1.5, 0.5]],
-
-    // Grid rays are generated x-major: each x value scans all y values.
     "scatteredAngleGrid"  : {
         "xMin"  : -1.0,
         "xMax"  : 1.0,
