@@ -1,4 +1,4 @@
-#include "MDMFieldMapTrace.h"
+#include "MdmFieldMapTrace.h"
 
 #include <algorithm>
 #include <cmath>
@@ -236,7 +236,7 @@ double OutputAngleYDegrees(const State& state, double speedCmPerSecond) {
   return std::asin(state.vy / speedCmPerSecond) * kDegreesPerRadian;
 }
 
-bool InMapBounds(const MDMFieldMap& map, double x, double y, double z) {
+bool InMapBounds(const MdmFieldMap& map, double x, double y, double z) {
   const auto within = [](double coord, double origin, double spacing,
                          int count) {
     const double maxCoord = origin + spacing * static_cast<double>(count - 1);
@@ -250,9 +250,9 @@ bool InMapBounds(const MDMFieldMap& map, double x, double y, double z) {
 
 }  // namespace
 
-MDMFieldMapTrace::MDMFieldMapTrace() = default;
+MdmFieldMapTrace::MdmFieldMapTrace() = default;
 
-void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
+void MdmFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
                                      const std::string& dipoleEntrancePath,
                                      const std::string& dipoleSectorPath,
                                      const std::string& dipoleExitPath) {
@@ -265,11 +265,11 @@ void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
   ValidateLoadedMaps();
 }
 
-void MDMFieldMapTrace::SetMDMAngle(double angleDeg) { mdmAngleDeg_ = angleDeg; }
+void MdmFieldMapTrace::SetMdmAngle(double angleDeg) { mdmAngleDeg_ = angleDeg; }
 
-double MDMFieldMapTrace::GetMDMAngle() const { return mdmAngleDeg_; }
+double MdmFieldMapTrace::GetMdmAngle() const { return mdmAngleDeg_; }
 
-void MDMFieldMapTrace::SetMDMProbe(double dipoleProbe, double multipoleProbe) {
+void MdmFieldMapTrace::SetMdmProbe(double dipoleProbe, double multipoleProbe) {
   requestedDipoleProbe_ = dipoleProbe;
   requestedMultipoleProbe_ = multipoleProbe;
   requestedProbesSet_ = true;
@@ -278,7 +278,7 @@ void MDMFieldMapTrace::SetMDMProbe(double dipoleProbe, double multipoleProbe) {
   }
 }
 
-void MDMFieldMapTrace::SetMDMDipoleField(double dipoleField) {
+void MdmFieldMapTrace::SetMdmDipoleField(double dipoleField) {
   requestedDipoleProbe_ = dipoleField / 1.034;
   requestedMultipoleProbe_ = requestedDipoleProbe_ * 0.71;
   requestedProbesSet_ = true;
@@ -287,50 +287,50 @@ void MDMFieldMapTrace::SetMDMDipoleField(double dipoleField) {
   }
 }
 
-void MDMFieldMapTrace::SetScatteredMass(double massAmu) {
+void MdmFieldMapTrace::SetScatteredMass(double massAmu) {
   scatteredMassAmu_ = massAmu;
 }
 
-double MDMFieldMapTrace::GetScatteredMass() const { return scatteredMassAmu_; }
+double MdmFieldMapTrace::GetScatteredMass() const { return scatteredMassAmu_; }
 
-void MDMFieldMapTrace::SetScatteredCharge(double charge) {
+void MdmFieldMapTrace::SetScatteredCharge(double charge) {
   scatteredCharge_ = charge;
 }
 
-double MDMFieldMapTrace::GetScatteredCharge() const { return scatteredCharge_; }
+double MdmFieldMapTrace::GetScatteredCharge() const { return scatteredCharge_; }
 
-void MDMFieldMapTrace::SetScatteredEnergy(double energyMeV) {
+void MdmFieldMapTrace::SetScatteredEnergy(double energyMeV) {
   scatteredEnergyMeV_ = energyMeV;
 }
 
-double MDMFieldMapTrace::GetScatteredEnergy() const {
+double MdmFieldMapTrace::GetScatteredEnergy() const {
   return scatteredEnergyMeV_;
 }
 
-void MDMFieldMapTrace::SetInitialPosition(double xCm, double yCm) {
+void MdmFieldMapTrace::SetInitialPosition(double xCm, double yCm) {
   initialXcm_ = xCm;
   initialYcm_ = yCm;
 }
 
-void MDMFieldMapTrace::SetScatteredAngle(double xAngleDeg) {
+void MdmFieldMapTrace::SetScatteredAngle(double xAngleDeg) {
   SetScatteredAngle(xAngleDeg, 0.0);
 }
 
-void MDMFieldMapTrace::SetScatteredAngle(double xAngleDeg, double yAngleDeg) {
+void MdmFieldMapTrace::SetScatteredAngle(double xAngleDeg, double yAngleDeg) {
   scatteredAnglesDeg_[0] = xAngleDeg;
   scatteredAnglesDeg_[1] = yAngleDeg;
 }
 
-double MDMFieldMapTrace::GetScatteredAngle() const {
+double MdmFieldMapTrace::GetScatteredAngle() const {
   return scatteredAnglesDeg_[0];
 }
 
-void MDMFieldMapTrace::ValidateLoadedMaps() const {
+void MdmFieldMapTrace::ValidateLoadedMaps() const {
   if (!mapsLoaded_) {
     return;
   }
 
-  std::vector<const MDMFieldMap*> mapsToCheck;
+  std::vector<const MdmFieldMap*> mapsToCheck;
   mapsToCheck.push_back(&multipoleMap_);
   mapsToCheck.push_back(&dipoleEntranceMap_);
   mapsToCheck.push_back(&dipoleSectorMap_);
@@ -340,7 +340,7 @@ void MDMFieldMapTrace::ValidateLoadedMaps() const {
   const double referenceMultipoleProbe =
       mapsToCheck.front()->h.mdm_multipole_probe;
 
-  for (const MDMFieldMap* map : mapsToCheck) {
+  for (const MdmFieldMap* map : mapsToCheck) {
     const double dipoleProbe = map->h.mdm_dipole_probe;
     const double multipoleProbe = map->h.mdm_multipole_probe;
     if (!NearlyEqual(referenceDipoleProbe, dipoleProbe) ||
@@ -360,7 +360,7 @@ void MDMFieldMapTrace::ValidateLoadedMaps() const {
   }
 }
 
-void MDMFieldMapTrace::SendRay() {
+void MdmFieldMapTrace::SendRay() {
   timeOfFlightSeconds_ = 0.0;
   if (!mapsLoaded_) {
     throw std::runtime_error("LoadFieldMaps must be called before SendRay");
@@ -613,7 +613,7 @@ void MDMFieldMapTrace::SendRay() {
   firstWireAngYDeg_ = OutputAngleYDegrees(state, speedCmPerSecond);
 }
 
-void MDMFieldMapTrace::GetPositionAngleFirstWire(double& posX,
+void MdmFieldMapTrace::GetPositionAngleFirstWire(double& posX,
                                                  double& posY,
                                                  double& angX,
                                                  double& angY) const {
@@ -623,6 +623,6 @@ void MDMFieldMapTrace::GetPositionAngleFirstWire(double& posX,
   angY = firstWireAngYDeg_;
 }
 
-double MDMFieldMapTrace::GetTimeOfFlightSeconds() const {
+double MdmFieldMapTrace::GetTimeOfFlightSeconds() const {
   return timeOfFlightSeconds_;
 }

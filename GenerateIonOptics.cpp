@@ -1,4 +1,4 @@
-#include "MDMFieldMapTrace.h"
+#include "MdmFieldMapTrace.h"
 #include "json.h"
 
 #include <TDecompSVD.h>
@@ -19,8 +19,8 @@
 #include <thread>
 #include <vector>
 
-#ifndef MDMTRACE_SOURCE_DIR
-#define MDMTRACE_SOURCE_DIR "."
+#ifndef MdmTrace_SOURCE_DIR
+#define MdmTrace_SOURCE_DIR "."
 #endif
 
 namespace {
@@ -294,10 +294,10 @@ void CheckConfig(const Config& cfg, const IonOpticsConfig& optics) {
   }
 }
 
-void ConfigureTrace(MDMFieldMapTrace& trace, const Config& cfg) {
-  trace.SetMDMAngle(cfg.mdmAngleDeg);
-  cfg.usingProbe ? trace.SetMDMProbe(cfg.dipoleProbe, cfg.multipoleProbe)
-                 : trace.SetMDMDipoleField(cfg.dipoleField);
+void ConfigureTrace(MdmFieldMapTrace& trace, const Config& cfg) {
+  trace.SetMdmAngle(cfg.mdmAngleDeg);
+  cfg.usingProbe ? trace.SetMdmProbe(cfg.dipoleProbe, cfg.multipoleProbe)
+                 : trace.SetMdmDipoleField(cfg.dipoleField);
   trace.SetScatteredMass(cfg.massAmu);
   trace.SetScatteredCharge(cfg.charge);
   trace.LoadFieldMaps(cfg.multipoleMap, cfg.dipoleEntranceMap,
@@ -325,7 +325,7 @@ double SpeedFromEnergy(double energyMeV, double massAmu) {
   return p / (massMeV + energyMeV) * kSpeedOfLightCmPerSecond;
 }
 
-TraceResult TraceRay(MDMFieldMapTrace& trace,
+TraceResult TraceRay(MdmFieldMapTrace& trace,
                      const Config& cfg,
                      const IonOpticsConfig& optics,
                      const PhaseSpace& input,
@@ -529,10 +529,10 @@ std::vector<FitSample> TraceGrid(const std::vector<PhaseSpace>& inputs,
   stats.total = inputs.size();
   stats.threads = ResolveThreadCount(optics.requestedThreads, inputs.size());
 
-  std::vector<std::unique_ptr<MDMFieldMapTrace>> traces;
+  std::vector<std::unique_ptr<MdmFieldMapTrace>> traces;
   traces.reserve(stats.threads);
   for (unsigned int worker = 0; worker < stats.threads; ++worker) {
-    auto trace = std::make_unique<MDMFieldMapTrace>();
+    auto trace = std::make_unique<MdmFieldMapTrace>();
     ConfigureTrace(*trace, cfg);
     const TraceResult warmup =
         TraceRay(*trace, cfg, optics, optics.reference, &longitudinal);
@@ -550,7 +550,7 @@ std::vector<FitSample> TraceGrid(const std::vector<PhaseSpace>& inputs,
       stats.firstSkippedReason = reason;
     }
   };
-  const auto runRange = [&](MDMFieldMapTrace& trace, std::size_t begin,
+  const auto runRange = [&](MdmFieldMapTrace& trace, std::size_t begin,
                             std::size_t end) {
     for (std::size_t i = begin; i < end; ++i) {
       TraceResult traceResult;
@@ -810,7 +810,7 @@ TransferMap FitTransferMap(const std::vector<FitSample>& samples,
 }
 
 std::string DefaultConfigPath() {
-  return std::string(MDMTRACE_SOURCE_DIR) + "/config/MDM.json";
+  return std::string(MdmTrace_SOURCE_DIR) + "/config/MDM.json";
 }
 
 void WriteAxis(std::ostream& out, const char* label, const Axis& axis) {
@@ -974,7 +974,7 @@ int main(int argc, char* argv[]) {
   const IonOpticsConfig optics = ParseIonOpticsConfig(json);
   CheckConfig(cfg, optics);
 
-  MDMFieldMapTrace trace;
+  MdmFieldMapTrace trace;
   ConfigureTrace(trace, cfg);
   const TraceResult referenceResult = TraceRay(trace, cfg, optics, optics.reference);
   if (referenceResult.stopped) {

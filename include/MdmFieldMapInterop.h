@@ -1,5 +1,4 @@
-#ifndef MDMFIELDMAPINTEROP_H
-#define MDMFIELDMAPINTEROP_H
+#pragma once
 
 extern "C" {
 void mdmfm_init();
@@ -14,5 +13,3 @@ extern struct {
   double ITITLE[200];
 } blck0_;
 }
-
-#endif

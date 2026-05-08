@@ -1,5 +1,5 @@
-#include "MDMFieldMap.h"
-#include "MDMFieldMapInterop.h"
+#include "MdmFieldMap.h"
+#include "MdmFieldMapInterop.h"
 
 #include <algorithm>
 #include <array>
@@ -237,7 +237,7 @@ GeneratorConfig ReadConfig(const std::string& path) {
   return result;
 }
 
-MDMFieldMap BuildMap(const std::string& magnetName,
+MdmFieldMap BuildMap(const std::string& magnetName,
                      const GridSpec& grid,
                      const Evaluator& evaluator,
                      const std::map<std::string, std::string>& extraFields) {
@@ -263,7 +263,7 @@ MDMFieldMap BuildMap(const std::string& magnetName,
     }
   }
 
-  MDMFieldMapHeader header;
+  MdmFieldMapHeader header;
   header.magnet = magnetName;
   header.nx = static_cast<int>(grid.counts[0]);
   header.ny = static_cast<int>(grid.counts[1]);
@@ -294,7 +294,7 @@ MDMFieldMap BuildMap(const std::string& magnetName,
     }
   }
 
-  return MDMFieldMap(std::move(header), std::move(bx), std::move(by),
+  return MdmFieldMap(std::move(header), std::move(bx), std::move(by),
                      std::move(bz));
 }
 
@@ -310,7 +310,7 @@ std::filesystem::path ResolveOutputPath(const std::filesystem::path& base,
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    std::cout << "Usage: ./MDMFieldMapGenerator <config-file>" << std::endl;
+    std::cout << "Usage: ./MdmFieldMapGenerator <config-file>" << std::endl;
     return 0;
   }
 
@@ -333,7 +333,7 @@ int main(int argc, char* argv[]) {
                             const Evaluator& evaluator,
                             const std::map<std::string, std::string>& metadata,
                             const std::filesystem::path& path) {
-    MDMFieldMap map = BuildMap(label, grid, evaluator, metadata);
+    MdmFieldMap map = BuildMap(label, grid, evaluator, metadata);
 
     EnsureParentDirectory(path);
     map.Save(path.string());

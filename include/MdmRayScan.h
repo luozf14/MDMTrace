@@ -1,5 +1,4 @@
-#ifndef MDM_RAY_SCAN_H
-#define MDM_RAY_SCAN_H
+#pragma once
 
 #include "json.h"
 
@@ -187,5 +186,3 @@ inline std::vector<RayInput> ParseRayInputs(const Json::Value& config) {
 }
 
 }  // namespace mdm
-
-#endif

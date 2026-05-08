@@ -1,6 +1,6 @@
-#include "MDMFieldMapTrace.h"
-#include "MDMRayScan.h"
-#include "MDMTrace.h"
+#include "MdmFieldMapTrace.h"
+#include "MdmRayScan.h"
+#include "MdmTrace.h"
 
 #include "json.h"
 
@@ -28,8 +28,8 @@
 #include <unistd.h>
 #include <vector>
 
-#ifndef MDMTRACE_SOURCE_DIR
-#define MDMTRACE_SOURCE_DIR "."
+#ifndef MdmTrace_SOURCE_DIR
+#define MdmTrace_SOURCE_DIR "."
 #endif
 
 namespace {
@@ -111,25 +111,25 @@ Config ParseConfig(const Json::Value& c) {
   return cfg;
 }
 
-void Configure(MDMTrace& trace, const Config& cfg) {
-  trace.SetMDMAngle(cfg.mdmAngle);
-  cfg.usingProbe ? trace.SetMDMProbe(cfg.dipoleProbe, cfg.multipoleProbe)
-                 : trace.SetMDMDipoleField(cfg.dipoleField);
+void Configure(MdmTrace& trace, const Config& cfg) {
+  trace.SetMdmAngle(cfg.mdmAngle);
+  cfg.usingProbe ? trace.SetMdmProbe(cfg.dipoleProbe, cfg.multipoleProbe)
+                 : trace.SetMdmDipoleField(cfg.dipoleField);
   trace.SetScatteredMass(cfg.mass);
   trace.SetScatteredCharge(cfg.charge);
 }
 
-void Configure(MDMFieldMapTrace& trace, const Config& cfg) {
-  trace.SetMDMAngle(cfg.mdmAngle);
-  cfg.usingProbe ? trace.SetMDMProbe(cfg.dipoleProbe, cfg.multipoleProbe)
-                 : trace.SetMDMDipoleField(cfg.dipoleField);
+void Configure(MdmFieldMapTrace& trace, const Config& cfg) {
+  trace.SetMdmAngle(cfg.mdmAngle);
+  cfg.usingProbe ? trace.SetMdmProbe(cfg.dipoleProbe, cfg.multipoleProbe)
+                 : trace.SetMdmDipoleField(cfg.dipoleField);
   trace.SetScatteredMass(cfg.mass);
   trace.SetScatteredCharge(cfg.charge);
   trace.LoadFieldMaps(cfg.multipoleMap, cfg.dipoleEntranceMap,
                       cfg.dipoleSectorMap, cfg.dipoleExitMap);
 }
 
-Result Run(MDMTrace& trace, const mdm::RayInput& ray) {
+Result Run(MdmTrace& trace, const mdm::RayInput& ray) {
   Result r;
   trace.SetScatteredAngle(ray.xDeg, ray.yDeg);
   trace.SetScatteredEnergy(ray.energyMeV);
@@ -138,7 +138,7 @@ Result Run(MDMTrace& trace, const mdm::RayInput& ray) {
   return r;
 }
 
-Result Run(MDMFieldMapTrace& trace, const mdm::RayInput& ray) {
+Result Run(MdmFieldMapTrace& trace, const mdm::RayInput& ray) {
   Result r;
   trace.SetScatteredAngle(ray.xDeg, ray.yDeg);
   trace.SetScatteredEnergy(ray.energyMeV);
@@ -177,8 +177,8 @@ void WriteWorkerRows(const std::string& configPath,
   const Config cfg = ParseConfig(json);
   const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(json);
 
-  MDMTrace legacy;
-  MDMFieldMapTrace fieldMap;
+  MdmTrace legacy;
+  MdmFieldMapTrace fieldMap;
   Configure(legacy, cfg);
   Configure(fieldMap, cfg);
 
@@ -208,8 +208,8 @@ void ReadWorkerRows(const std::string& path, std::vector<Row>& rows) {
 std::vector<Row> TraceRowsSerial(const std::vector<mdm::RayInput>& rays,
                                  const Config& cfg) {
   std::vector<Row> rows(rays.size());
-  MDMTrace legacy;
-  MDMFieldMapTrace fieldMap;
+  MdmTrace legacy;
+  MdmFieldMapTrace fieldMap;
   Configure(legacy, cfg);
   Configure(fieldMap, cfg);
   for (std::size_t i = 0; i < rays.size(); ++i) {
@@ -419,7 +419,7 @@ void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
 }
 
 std::string DefaultConfigPath() {
-  return std::string(MDMTRACE_SOURCE_DIR) + "/config/MDMScan.json";
+  return std::string(MdmTrace_SOURCE_DIR) + "/config/MDMScan.json";
 }
 
 }  // namespace

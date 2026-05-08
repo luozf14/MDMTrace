@@ -1,5 +1,5 @@
-#include "MDMFieldMapTrace.h"
-#include "MDMRayScan.h"
+#include "MdmFieldMapTrace.h"
+#include "MdmRayScan.h"
 #include "json.h"
 
 #include <cstdio>
@@ -24,7 +24,7 @@ std::string GetString(const Json::Value& config,
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    std::cerr << "Usage: ./MDMFieldMapTraceExample <config-file>" << std::endl;
+    std::cerr << "Usage: ./MdmFieldMapTraceExample <config-file>" << std::endl;
     return 1;
   }
 
@@ -42,13 +42,13 @@ int main(int argc, char* argv[]) {
       config.isMember("usingProbe") && config["usingProbe"].asBool();
   const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(config);
 
-  MDMFieldMapTrace trace;
-  trace.SetMDMAngle(GetDouble(config, "mdmAngle"));
+  MdmFieldMapTrace trace;
+  trace.SetMdmAngle(GetDouble(config, "mdmAngle"));
   if (usingProbe) {
-    trace.SetMDMProbe(GetDouble(config, "mdmDipoleProbe"),
+    trace.SetMdmProbe(GetDouble(config, "mdmDipoleProbe"),
                       GetDouble(config, "mdmMultipoleProbe"));
   } else {
-    trace.SetMDMDipoleField(GetDouble(config, "mdmDipoleField"));
+    trace.SetMdmDipoleField(GetDouble(config, "mdmDipoleField"));
   }
   trace.SetScatteredMass(GetDouble(config, "scatteredMass"));
   trace.SetScatteredCharge(GetDouble(config, "scatteredCharge"));

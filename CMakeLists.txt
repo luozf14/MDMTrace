@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(MDMTraceExample)
+project(MdmTraceExample)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -12,53 +12,53 @@ add_library(JsonCpp SHARED src/jsoncpp.cpp)
 target_include_directories(JsonCpp PUBLIC ${PROJECT_SOURCE_DIR}/include/json)
 
 # standalone field-map reader/interpolator
-add_library(MDMFieldMap SHARED
-    src/MDMFieldMap.cpp
+add_library(MdmFieldMap SHARED
+    src/MdmFieldMap.cpp
 )
-target_include_directories(MDMFieldMap PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(MdmFieldMap PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
 # field-map ray transport, no Fortran dependency
-add_library (MDMFieldMapTransport SHARED
-    src/MDMFieldMapTrace.cpp
+add_library (MdmFieldMapTransport SHARED
+    src/MdmFieldMapTrace.cpp
 )
-target_include_directories(MDMFieldMapTransport PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MDMFieldMapTransport PUBLIC MDMFieldMap)
+target_include_directories(MdmFieldMapTransport PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(MdmFieldMapTransport PUBLIC MdmFieldMap)
 
-# build library libMDMTraceFit
-add_library (MDMTrace SHARED
-    src/MDMTrace.cpp
+# build library libMdmTraceFit
+add_library (MdmTrace SHARED
+    src/MdmTrace.cpp
     src/RAYTKIN1.F
-    src/MDMFieldMapInterop.F90
+    src/MdmFieldMapInterop.F90
 )
-target_include_directories(MDMTrace PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(MdmTrace PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
-# build executable file ${PROJECT_NAME} (MDMTracking)
-add_executable(${PROJECT_NAME} MDMTraceExample.C)
+# build executable file ${PROJECT_NAME}
+add_executable(${PROJECT_NAME} MdmTraceExample.cpp)
 target_include_directories(${PROJECT_NAME} PRIVATE  ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(${PROJECT_NAME} PRIVATE MDMTrace JsonCpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE MdmTrace JsonCpp)
 
-add_executable(MDMFieldMapGenerator src/MDMFieldMapGenerator.cpp)
-target_include_directories(MDMFieldMapGenerator PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MDMFieldMapGenerator PRIVATE MDMTrace MDMFieldMap JsonCpp)
+add_executable(MdmFieldMapGenerator src/MdmFieldMapGenerator.cpp)
+target_include_directories(MdmFieldMapGenerator PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(MdmFieldMapGenerator PRIVATE MdmTrace MdmFieldMap JsonCpp)
 
-add_executable(MDMFieldMapTraceExample MDMFieldMapTraceExample.cpp)
-target_include_directories(MDMFieldMapTraceExample PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MDMFieldMapTraceExample PRIVATE MDMFieldMapTransport JsonCpp)
+add_executable(MdmFieldMapTraceExample MdmFieldMapTraceExample.cpp)
+target_include_directories(MdmFieldMapTraceExample PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(MdmFieldMapTraceExample PRIVATE MdmFieldMapTransport JsonCpp)
 
-add_executable(FindMDMField FindMDMField.cpp)
-target_include_directories(FindMDMField PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(FindMDMField PRIVATE MDMTrace JsonCpp)
+add_executable(FindMdmField FindMdmField.cpp)
+target_include_directories(FindMdmField PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(FindMdmField PRIVATE MdmTrace JsonCpp)
 
 add_executable(GenerateIonOptics GenerateIonOptics.cpp)
 target_include_directories(GenerateIonOptics PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_compile_definitions(GenerateIonOptics PRIVATE MDMTRACE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-target_link_libraries(GenerateIonOptics PRIVATE MDMFieldMapTransport JsonCpp)
+target_compile_definitions(GenerateIonOptics PRIVATE MdmTrace_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(GenerateIonOptics PRIVATE MdmFieldMapTransport JsonCpp)
 
 find_package(ROOT QUIET COMPONENTS Core RIO Hist Graf Gpad Matrix)
 if(ROOT_FOUND AND ROOT_LIBRARIES)
-    set(MDMTRACE_ROOT_INCLUDE_DIRS ${ROOT_INCLUDE_DIRS})
-    set(MDMTRACE_ROOT_LIBRARIES ${ROOT_LIBRARIES})
-    separate_arguments(MDMTRACE_ROOT_COMPILE_OPTIONS UNIX_COMMAND "${ROOT_CXX_FLAGS}")
+    set(MdmTrace_ROOT_INCLUDE_DIRS ${ROOT_INCLUDE_DIRS})
+    set(MdmTrace_ROOT_LIBRARIES ${ROOT_LIBRARIES})
+    separate_arguments(MdmTrace_ROOT_COMPILE_OPTIONS UNIX_COMMAND "${ROOT_CXX_FLAGS}")
 else()
     find_program(ROOT_CONFIG_EXECUTABLE root-config)
     if(NOT ROOT_CONFIG_EXECUTABLE)
@@ -84,19 +84,19 @@ else()
     if(NOT ROOT_CONFIG_LIBS_RESULT EQUAL 0)
         message(FATAL_ERROR "root-config --libs failed: ${ROOT_CONFIG_LIBS_ERROR}")
     endif()
-    separate_arguments(MDMTRACE_ROOT_COMPILE_OPTIONS UNIX_COMMAND "${ROOT_CONFIG_CFLAGS}")
-    separate_arguments(MDMTRACE_ROOT_LIBRARIES UNIX_COMMAND "${ROOT_CONFIG_LIBS}")
+    separate_arguments(MdmTrace_ROOT_COMPILE_OPTIONS UNIX_COMMAND "${ROOT_CONFIG_CFLAGS}")
+    separate_arguments(MdmTrace_ROOT_LIBRARIES UNIX_COMMAND "${ROOT_CONFIG_LIBS}")
 endif()
 
 add_executable(Compare Compare.cpp)
-target_include_directories(Compare PRIVATE ${PROJECT_SOURCE_DIR}/include ${MDMTRACE_ROOT_INCLUDE_DIRS})
-target_compile_options(Compare PRIVATE ${MDMTRACE_ROOT_COMPILE_OPTIONS})
-target_compile_definitions(Compare PRIVATE MDMTRACE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-target_link_libraries(Compare PRIVATE MDMTrace MDMFieldMapTransport JsonCpp ${MDMTRACE_ROOT_LIBRARIES})
+target_include_directories(Compare PRIVATE ${PROJECT_SOURCE_DIR}/include ${MdmTrace_ROOT_INCLUDE_DIRS})
+target_compile_options(Compare PRIVATE ${MdmTrace_ROOT_COMPILE_OPTIONS})
+target_compile_definitions(Compare PRIVATE MdmTrace_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(Compare PRIVATE MdmTrace MdmFieldMapTransport JsonCpp ${MdmTrace_ROOT_LIBRARIES})
 
-target_include_directories(GenerateIonOptics PRIVATE ${MDMTRACE_ROOT_INCLUDE_DIRS})
-target_compile_options(GenerateIonOptics PRIVATE ${MDMTRACE_ROOT_COMPILE_OPTIONS})
-target_link_libraries(GenerateIonOptics PRIVATE ${MDMTRACE_ROOT_LIBRARIES})
+target_include_directories(GenerateIonOptics PRIVATE ${MdmTrace_ROOT_INCLUDE_DIRS})
+target_compile_options(GenerateIonOptics PRIVATE ${MdmTrace_ROOT_COMPILE_OPTIONS})
+target_link_libraries(GenerateIonOptics PRIVATE ${MdmTrace_ROOT_LIBRARIES})
 
 # copy rayin.dat from dat/ to build/
 set(DAT_FILES rayin.dat)

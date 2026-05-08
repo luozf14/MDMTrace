@@ -1,4 +1,4 @@
-#include "MDMFieldMap.h"
+#include "MdmFieldMap.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,9 +46,9 @@ double Lerp(double a, double b, double t) { return a + (b - a) * t; }
 
 }  // namespace
 
-MDMFieldMap::MDMFieldMap(const std::string& file) { Load(file); }
+MdmFieldMap::MdmFieldMap(const std::string& file) { Load(file); }
 
-MDMFieldMap::MDMFieldMap(MDMFieldMapHeader header,
+MdmFieldMap::MdmFieldMap(MdmFieldMapHeader header,
                          std::vector<float> bxIn,
                          std::vector<float> byIn,
                          std::vector<float> bzIn)
@@ -61,7 +61,7 @@ MDMFieldMap::MDMFieldMap(MDMFieldMapHeader header,
   }
 }
 
-void MDMFieldMap::Load(const std::string& file) {
+void MdmFieldMap::Load(const std::string& file) {
   std::ifstream in(file, std::ios::binary);
   if (!in) {
     throw std::runtime_error("cannot open field map: " + file);
@@ -84,7 +84,7 @@ void MDMFieldMap::Load(const std::string& file) {
     kv[Trim(line.substr(0, eq))] = Trim(line.substr(eq + 1));
   }
 
-  h = MDMFieldMapHeader{};
+  h = MdmFieldMapHeader{};
   h.magnet = kv.at("magnet");
   h.nx = std::stoi(kv.at("nx"));
   h.ny = std::stoi(kv.at("ny"));
@@ -129,7 +129,7 @@ void MDMFieldMap::Load(const std::string& file) {
   }
 }
 
-void MDMFieldMap::Save(const std::string& file) const {
+void MdmFieldMap::Save(const std::string& file) const {
   std::ofstream out(file, std::ios::binary);
   if (!out) {
     throw std::runtime_error("cannot create field map: " + file);
@@ -172,7 +172,7 @@ void MDMFieldMap::Save(const std::string& file) const {
             static_cast<std::streamsize>(bz.size() * sizeof(float)));
 }
 
-bool MDMFieldMap::Inside(double x, double y, double z) const {
+bool MdmFieldMap::Inside(double x, double y, double z) const {
   const auto inAxis = [](double q, double q0, double dq, int n) {
     const double q1 = q0 + dq * static_cast<double>(n - 1);
     return q >= q0 && q <= q1;
@@ -186,7 +186,7 @@ bool MDMFieldMap::Inside(double x, double y, double z) const {
          x * x + y * y <= h.aperture_radius_cm * h.aperture_radius_cm;
 }
 
-Vec3 MDMFieldMap::FieldTesla(double x, double y, double z) const {
+Vec3 MdmFieldMap::FieldTesla(double x, double y, double z) const {
   if (!Inside(x, y, z)) {
     return {};
   }
@@ -221,14 +221,14 @@ Vec3 MDMFieldMap::FieldTesla(double x, double y, double z) const {
   return {interpolate(bx), interpolate(by), interpolate(bz)};
 }
 
-std::size_t MDMFieldMap::Index(int ix, int iy, int iz) const {
+std::size_t MdmFieldMap::Index(int ix, int iy, int iz) const {
   return static_cast<std::size_t>(ix) +
          static_cast<std::size_t>(h.nx) *
              (static_cast<std::size_t>(iy) +
               static_cast<std::size_t>(h.ny) * static_cast<std::size_t>(iz));
 }
 
-std::size_t MDMFieldMap::Size() const {
+std::size_t MdmFieldMap::Size() const {
   return static_cast<std::size_t>(h.nx) * static_cast<std::size_t>(h.ny) *
          static_cast<std::size_t>(h.nz);
 }

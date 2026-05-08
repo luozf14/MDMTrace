@@ -1,24 +1,23 @@
-#ifndef MDMFIELDMAPTRACE_H
-#define MDMFIELDMAPTRACE_H
+#pragma once
 
-#include "MDMFieldMap.h"
+#include "MdmFieldMap.h"
 
 #include <string>
 
-class MDMFieldMapTrace {
+class MdmFieldMapTrace {
  public:
-  MDMFieldMapTrace();
+  MdmFieldMapTrace();
 
   void LoadFieldMaps(const std::string& multipolePath,
                      const std::string& dipoleEntrancePath,
                      const std::string& dipoleSectorPath,
                      const std::string& dipoleExitPath);
 
-  void SetMDMAngle(double angleDeg);
-  double GetMDMAngle() const;
+  void SetMdmAngle(double angleDeg);
+  double GetMdmAngle() const;
 
-  void SetMDMProbe(double dipoleProbe, double multipoleProbe);
-  void SetMDMDipoleField(double dipoleField);
+  void SetMdmProbe(double dipoleProbe, double multipoleProbe);
+  void SetMdmDipoleField(double dipoleField);
 
   void SetScatteredMass(double massAmu);
   double GetScatteredMass() const;
@@ -59,10 +58,10 @@ class MDMFieldMapTrace {
   bool requestedProbesSet_ = false;
 
   bool mapsLoaded_ = false;
-  MDMFieldMap multipoleMap_;
-  MDMFieldMap dipoleEntranceMap_;
-  MDMFieldMap dipoleSectorMap_;
-  MDMFieldMap dipoleExitMap_;
+  MdmFieldMap multipoleMap_;
+  MdmFieldMap dipoleEntranceMap_;
+  MdmFieldMap dipoleSectorMap_;
+  MdmFieldMap dipoleExitMap_;
 
   double firstWireX_ = 0.0;
   double firstWireY_ = 0.0;
@@ -70,5 +69,3 @@ class MDMFieldMapTrace {
   double firstWireAngYDeg_ = 0.0;
   double timeOfFlightSeconds_ = 0.0;
 };
-
-#endif

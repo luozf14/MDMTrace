@@ -1,5 +1,4 @@
-#ifndef MDMFIELDMAP_H
-#define MDMFIELDMAP_H
+#pragma once
 
 #include <cstddef>
 #include <map>
@@ -29,7 +28,7 @@ struct Vec3 {
   double z = 0.0;
 };
 
-struct MDMFieldMapHeader {
+struct MdmFieldMapHeader {
   std::string magnet;
   int nx = 0;
   int ny = 0;
@@ -45,11 +44,11 @@ struct MDMFieldMapHeader {
   std::map<std::string, std::string> extra;
 };
 
-class MDMFieldMap {
+class MdmFieldMap {
  public:
-  MDMFieldMap() = default;
-  explicit MDMFieldMap(const std::string& file);
-  MDMFieldMap(MDMFieldMapHeader header,
+  MdmFieldMap() = default;
+  explicit MdmFieldMap(const std::string& file);
+  MdmFieldMap(MdmFieldMapHeader header,
               std::vector<float> bx,
               std::vector<float> by,
               std::vector<float> bz);
@@ -62,10 +61,8 @@ class MDMFieldMap {
   std::size_t Index(int ix, int iy, int iz) const;
   std::size_t Size() const;
 
-  MDMFieldMapHeader h;
+  MdmFieldMapHeader h;
   std::vector<float> bx;
   std::vector<float> by;
   std::vector<float> bz;
 };
-
-#endif

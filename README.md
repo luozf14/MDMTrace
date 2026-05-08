@@ -1,6 +1,6 @@
-# MDMTrace
+# MdmTrace
 
-MDMTrace is a C++ interface around the MIT RAYTRACE code plus MDM-specific tools for field-map generation and validation. The active optics deck is [dat/rayin.dat](dat/rayin.dat), and the original RAYTRACE manuals are shipped in the repository root as [raytrace1.pdf](raytrace1.pdf), [raytrace2.pdf](raytrace2.pdf), and [raytrace3.pdf](raytrace3.pdf).
+MdmTrace is a C++ interface around the MIT RAYTRACE code plus MDM-specific tools for field-map generation and validation. The active optics deck is [dat/rayin.dat](dat/rayin.dat), and the original RAYTRACE manuals are shipped in the repository root as [raytrace1.pdf](raytrace1.pdf), [raytrace2.pdf](raytrace2.pdf), and [raytrace3.pdf](raytrace3.pdf).
 
 This repository currently models one specific MDM configuration:
 
@@ -12,18 +12,18 @@ This repository currently models one specific MDM configuration:
 
 The project has five main user-facing executables:
 
-- `MDMTraceExample`: runs the original Fortran RAYTRACE transport through the deck.
-- `MDMFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`.
-- `MDMFieldMapTraceExample`: transports ions through the generated field maps and compares against the original tracer output format.
+- `MdmTraceExample`: runs the original Fortran RAYTRACE transport through the deck.
+- `MdmFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`.
+- `MdmFieldMapTraceExample`: transports ions through the generated field maps and compares against the original tracer output format.
 - `Compare`: runs both transport paths for the angle/energy-grid config and writes ROOT comparison plots.
 - `GenerateIonOptics`: fits ion-optical maps up to fifth order from many field-map-traced rays.
-- `FindMDMField`: tunes the scalar MDM dipole field for a requested ion using legacy RAYTRACE.
+- `FindMdmField`: tunes the scalar MDM dipole field for a requested ion using legacy RAYTRACE.
 
 At the library level, the repo exposes three main C++ interfaces:
 
-- `MDMTrace`: thin wrapper around the original Fortran tracer and common blocks.
-- `MDMFieldMap`: standalone binary field-map loader, saver, and trilinear interpolator.
-- `MDMFieldMapTrace`: Fortran-free field-map-based transport validator for the current MDM beamline.
+- `MdmTrace`: thin wrapper around the original Fortran tracer and common blocks.
+- `MdmFieldMap`: standalone binary field-map loader, saver, and trilinear interpolator.
+- `MdmFieldMapTrace`: Fortran-free field-map-based transport validator for the current MDM beamline.
 
 ## Repository Structure
 
@@ -31,11 +31,11 @@ At the library level, the repo exposes three main C++ interfaces:
 - `include/`: public C++ headers.
 - `config/`: two self-contained JSON configs, `MDM.json` for normal use and `MDMScan.json` for scan/comparison runs.
 - `dat/`: the active RAYTRACE optics deck, `rayin.dat`.
-- `MDMTraceExample.C`: example executable for the original Fortran transport.
-- `MDMFieldMapTraceExample.cpp`: example executable for the field-map validator.
+- `MdmTraceExample.cpp`: example executable for the original Fortran transport.
+- `MdmFieldMapTraceExample.cpp`: example executable for the field-map validator.
 - `Compare.cpp`: ROOT comparison executable for legacy-vs-field-map validation.
 - `GenerateIonOptics.cpp`: field-map-based ion-optics fitter up to fifth order.
-- `FindMDMField.cpp`: legacy-RAYTRACE field-setting tuner.
+- `FindMdmField.cpp`: legacy-RAYTRACE field-setting tuner.
 - `raytrace1.pdf`, `raytrace2.pdf`, `raytrace3.pdf`: original RAYTRACE manuals.
 
 ## Build
@@ -49,34 +49,34 @@ cmake --build build -j4
 
 The build produces:
 
-- `build/libMDMFieldMap.*`
-- `build/libMDMFieldMapTransport.*`
-- `build/MDMTraceExample`
-- `build/MDMFieldMapGenerator`
-- `build/MDMFieldMapTraceExample`
+- `build/libMdmFieldMap.*`
+- `build/libMdmFieldMapTransport.*`
+- `build/MdmTraceExample`
+- `build/MdmFieldMapGenerator`
+- `build/MdmFieldMapTraceExample`
 - `build/Compare`
 - `build/GenerateIonOptics`
-- `build/FindMDMField`
+- `build/FindMdmField`
 
 During configuration, CMake copies `dat/rayin.dat` into `build/`. Running the executables from `build/` is the intended default workflow.
 
 ## Usage
 
-### `MDMTraceExample`
+### `MdmTraceExample`
 
 Purpose: run the original Fortran RAYTRACE transport with the current MDM deck.
 
 Syntax:
 
 ```bash
-./MDMTraceExample <config-file>
+./MdmTraceExample <config-file>
 ```
 
 Example:
 
 ```bash
 cd build
-./MDMTraceExample ../config/MDM.json
+./MdmTraceExample ../config/MDM.json
 ```
 
 Input:
@@ -95,21 +95,21 @@ Notes:
 - Use `scatteredAnglePairs` or `scatteredAngleGrid` to scan nonzero vertical input angles.
 - Use `scatteredEnergyGrid` to scan kinetic energy in MeV.
 
-### `MDMFieldMapGenerator`
+### `MdmFieldMapGenerator`
 
 Purpose: sample the entrance multipole and dipole fields from the RAYTRACE formulas and write binary field maps.
 
 Syntax:
 
 ```bash
-./MDMFieldMapGenerator <config-file>
+./MdmFieldMapGenerator <config-file>
 ```
 
 Example:
 
 ```bash
 cd build
-./MDMFieldMapGenerator ../config/MDM.json
+./MdmFieldMapGenerator ../config/MDM.json
 ```
 
 Input:
@@ -131,21 +131,21 @@ Notes:
 - Grid spacing is controlled by `fieldMapSpacingMm` in the generator JSON. The generator no longer uses `LF1/LU1/LF2/DG` as map spacing.
 - Relative output paths are resolved against `outputDirectory`.
 
-### `MDMFieldMapTraceExample`
+### `MdmFieldMapTraceExample`
 
-Purpose: transport ions through `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` with the current MDM beamline geometry compiled into C++, then print the same final result format as `MDMTraceExample`.
+Purpose: transport ions through `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` with the current MDM beamline geometry compiled into C++, then print the same final result format as `MdmTraceExample`.
 
 Syntax:
 
 ```bash
-./MDMFieldMapTraceExample <config-file>
+./MdmFieldMapTraceExample <config-file>
 ```
 
 Example:
 
 ```bash
 cd build
-./MDMFieldMapTraceExample ../config/MDM.json
+./MdmFieldMapTraceExample ../config/MDM.json
 ```
 
 Input:
@@ -155,7 +155,7 @@ Input:
 
 Output:
 
-- one final line per requested input ray in the same form used by `MDMTraceExample`
+- one final line per requested input ray in the same form used by `MdmTraceExample`
 
 Notes:
 
@@ -228,21 +228,21 @@ Notes:
 - The fit uses ROOT `TDecompSVD` on the normal matrix and parallel field-map tracing.
 - Aperture-stopped rays are skipped in the fit and counted in the report.
 
-### `FindMDMField`
+### `FindMdmField`
 
 Purpose: compute an initial MDM dipole field from ion rigidity, then tune the dipole field so the first-wire output ray is as close as possible to `X1=Y1=AngX1=AngY1=0`.
 
 Syntax:
 
 ```bash
-./FindMDMField [config-file]
+./FindMdmField [config-file]
 ```
 
 Example:
 
 ```bash
 cd build
-./FindMDMField ../config/MDMFindField.json
+./FindMdmField ../config/MDMFindField.json
 ```
 
 Output:
@@ -256,7 +256,7 @@ Output:
 Notes:
 
 - This executable uses legacy RAYTRACE directly, not field maps, because the generated field maps encode one fixed magnet setting.
-- The tuned scalar is `mdmDipoleField` in Gauss. The entrance multipole follows the existing fixed relation through `MDMTrace::SetMDMDipoleField`.
+- The tuned scalar is `mdmDipoleField` in Gauss. The entrance multipole follows the existing fixed relation through `MdmTrace::SetMdmDipoleField`.
 - One scalar field may not make all four output quantities exactly zero, so the result is the best weighted compromise.
 
 ## JSON Configuration
@@ -270,7 +270,7 @@ There is no include or inheritance mechanism. Each file is self-contained, and e
 
 ### Shared Transport Keys
 
-These keys are used by `MDMTraceExample` and `MDMFieldMapTraceExample`.
+These keys are used by `MdmTraceExample` and `MdmFieldMapTraceExample`.
 
 | Key | Meaning |
 | --- | --- |
@@ -291,7 +291,7 @@ If multiple angle-scan keys are present, angle rays are concatenated in this ord
 
 ### Generator Keys
 
-These keys are used by `MDMFieldMapGenerator`.
+These keys are used by `MdmFieldMapGenerator`.
 
 | Key | Meaning |
 | --- | --- |
@@ -307,7 +307,7 @@ These keys are used by `MDMFieldMapGenerator`.
 
 ### Validator-Only Keys
 
-These keys are optional and are used only by `MDMFieldMapTraceExample`.
+These keys are optional and are used only by `MdmFieldMapTraceExample`.
 
 | Key | Meaning |
 | --- | --- |
@@ -359,7 +359,7 @@ The `L -> L` matrix element is fixed to `1`. The last matrix row is fixed to `[0
 
 ### Field-Finder Keys
 
-`FindMDMField` uses the top-level `mdmAngle`, `scatteredMass`, `scatteredCharge`, and `scatteredEnergy` keys plus a `fieldFinder` object.
+`FindMdmField` uses the top-level `mdmAngle`, `scatteredMass`, `scatteredCharge`, and `scatteredEnergy` keys plus a `fieldFinder` object.
 
 | Key | Meaning |
 | --- | --- |
@@ -423,11 +423,11 @@ dipoleProbe = mdmDipoleField / 1.034
 multipoleProbe = dipoleProbe * 0.71
 ```
 
-- the entrance multipole field strengths are derived from `mdmMultipoleProbe` using the embedded Jeffs calibration ratios already used by `MDMTrace.cpp`
+- the entrance multipole field strengths are derived from `mdmMultipoleProbe` using the embedded Jeffs calibration ratios already used by `MdmTrace.cpp`
 
 ### Transport Model
 
-`MDMTrace` and `MDMFieldMapTrace` both follow the magnetic RAYTRACE particle model:
+`MdmTrace` and `MdmFieldMapTrace` both follow the magnetic RAYTRACE particle model:
 
 - particle state is advanced in `(x, y, z, vx, vy, vz)`
 - only magnetic fields are used in the current MDM workflow
@@ -502,14 +502,14 @@ z = origin_z + iz * dz
 
 where `origin_cm = origin_x origin_y origin_z` and `spacing_cm = dx dy dz`.
 
-### Using `MDMFieldMap` Elsewhere
+### Using `MdmFieldMap` Elsewhere
 
-`include/MDMFieldMap.h` and `src/MDMFieldMap.cpp` are intentionally standalone. They can be copied into another project without RAYTRACE, ROOT, JSON, or the field-map validator.
+`include/MdmFieldMap.h` and `src/MdmFieldMap.cpp` are intentionally standalone. They can be copied into another project without RAYTRACE, ROOT, JSON, or the field-map validator.
 
 Minimal use:
 
 ```cpp
-MDMFieldMap map("Multipole.bin");
+MdmFieldMap map("Multipole.bin");
 Vec3 b = map.FieldTesla(x_cm, y_cm, z_cm);
 ```
 
@@ -581,16 +581,16 @@ The intended workflow is:
 cmake -S . -B build
 cmake --build build -j4
 cd build
-./MDMFieldMapGenerator ../config/MDM.json
-./MDMTraceExample ../config/MDM.json
-./MDMFieldMapTraceExample ../config/MDM.json
+./MdmFieldMapGenerator ../config/MDM.json
+./MdmTraceExample ../config/MDM.json
+./MdmFieldMapTraceExample ../config/MDM.json
 ```
 
 For a wider angular scan that includes rays off the median plane:
 
 ```bash
-./MDMTraceExample ../config/MDMScan.json
-./MDMFieldMapTraceExample ../config/MDMScan.json
+./MdmTraceExample ../config/MDMScan.json
+./MdmFieldMapTraceExample ../config/MDMScan.json
 ```
 
 Compare the final values:
@@ -600,7 +600,7 @@ Compare the final values:
 - `AngX1`
 - `AngY1`
 
-`MDMFieldMapTraceExample` is designed to make that comparison straightforward by printing the same final result format as `MDMTraceExample`.
+`MdmFieldMapTraceExample` is designed to make that comparison straightforward by printing the same final result format as `MdmTraceExample`.
 
 ## Limitations
 

@@ -1,4 +1,4 @@
-#include "MDMTrace.h"
+#include "MdmTrace.h"
 #include "json.h"
 
 #include <cmath>
@@ -116,9 +116,9 @@ double InitialFieldGauss(const Config& cfg) {
 }
 
 RayResult TraceAtField(const Config& cfg, double fieldGauss) {
-  MDMTrace trace;
-  trace.SetMDMAngle(cfg.mdmAngleDeg);
-  trace.SetMDMDipoleField(fieldGauss);
+  MdmTrace trace;
+  trace.SetMdmAngle(cfg.mdmAngleDeg);
+  trace.SetMdmDipoleField(fieldGauss);
   trace.SetScatteredMass(cfg.massAmu);
   trace.SetScatteredCharge(cfg.charge);
   trace.SetScatteredEnergy(cfg.energyMeV);

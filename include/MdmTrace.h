@@ -1,20 +1,19 @@
-#ifndef MDMTRACE_H
-#define MDMTRACE_H
+#pragma once
 
-class MDMTrace {
+class MdmTrace {
  public:
-  MDMTrace();
+  MdmTrace();
 
   void SetBeamEnergy(double);
   double GetBeamEnergy() const;
 
-  void SetMDMAngle(double);
-  double GetMDMAngle() const;
-  void SetMDMBRho(double);
-  void SetMDMDipoleField(double);
-  void SetMDMField(double, double);
-  void SetMDMProbe(double, double);
-  double GetMDMDipoleField() const;
+  void SetMdmAngle(double);
+  double GetMdmAngle() const;
+  void SetMdmBRho(double);
+  void SetMdmDipoleField(double);
+  void SetMdmField(double, double);
+  void SetMdmProbe(double, double);
+  double GetMdmDipoleField() const;
 
   void SetScatteredAngle(double);
   void SetScatteredAngle(double, double);
@@ -60,5 +59,3 @@ class MDMTrace {
   double scatteredEnergy_;
   double scatteredAngles_[2];
 };
-
-#endif
