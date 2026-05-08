@@ -10,6 +10,7 @@
 #include <TH2D.h>
 #include <TLine.h>
 #include <TPad.h>
+#include <TPaveText.h>
 #include <TStyle.h>
 
 #include <algorithm>
@@ -65,6 +66,12 @@ struct Quantity {
   const char* title;
   const char* unit;
   std::function<double(const Result&)> value;
+};
+
+struct LinearFit {
+  double intercept = 0.0;
+  double slope = 0.0;
+  double r2 = 0.0;
 };
 
 Json::Value ReadJson(const std::string& path) {
@@ -284,6 +291,39 @@ std::pair<double, double> Range(const std::vector<double>& values,
   return {lo - pad, hi + pad};
 }
 
+LinearFit FitLine(const std::vector<double>& x, const std::vector<double>& y) {
+  LinearFit fit;
+  const double n = static_cast<double>(x.size());
+  double meanX = 0.0;
+  double meanY = 0.0;
+  for (std::size_t i = 0; i < x.size(); ++i) {
+    meanX += x[i];
+    meanY += y[i];
+  }
+  meanX /= n;
+  meanY /= n;
+
+  double sxx = 0.0;
+  double sxy = 0.0;
+  for (std::size_t i = 0; i < x.size(); ++i) {
+    const double dx = x[i] - meanX;
+    sxx += dx * dx;
+    sxy += dx * (y[i] - meanY);
+  }
+  fit.slope = sxx > 0.0 ? sxy / sxx : 0.0;
+  fit.intercept = meanY - fit.slope * meanX;
+
+  double ssResidual = 0.0;
+  double ssTotal = 0.0;
+  for (std::size_t i = 0; i < x.size(); ++i) {
+    const double fitted = fit.intercept + fit.slope * x[i];
+    ssResidual += (y[i] - fitted) * (y[i] - fitted);
+    ssTotal += (y[i] - meanY) * (y[i] - meanY);
+  }
+  fit.r2 = ssTotal > 0.0 ? 1.0 - ssResidual / ssTotal : 1.0;
+  return fit;
+}
+
 void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
   std::vector<double> legacy;
   std::vector<double> fieldMap;
@@ -301,6 +341,7 @@ void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
   both.insert(both.end(), fieldMap.begin(), fieldMap.end());
   const auto xyRange = Range(both);
   const auto residualRange = Range(residual, true);
+  const LinearFit fit = FitLine(legacy, fieldMap);
 
   TCanvas canvas((std::string("c_") + q.key).c_str(),
                  (std::string(q.title) + " legacy vs field-map").c_str(), 900,
@@ -331,10 +372,24 @@ void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
   TGraph scatter(static_cast<int>(rows.size()), legacy.data(), fieldMap.data());
   scatter.SetMarkerStyle(20);
   scatter.Draw("P SAME");
-  TLine diagonal(xyRange.first, xyRange.first, xyRange.second, xyRange.second);
-  diagonal.SetLineColor(kRed);
-  diagonal.SetLineWidth(2);
-  diagonal.Draw("SAME");
+  TLine fitLine(xyRange.first, fit.intercept + fit.slope * xyRange.first,
+                xyRange.second, fit.intercept + fit.slope * xyRange.second);
+  fitLine.SetLineColor(kRed);
+  fitLine.SetLineWidth(2);
+  fitLine.Draw("SAME");
+  TPaveText fitText(0.15, 0.74, 0.62, 0.90, "NDC");
+  fitText.SetFillColor(0);
+  fitText.SetBorderSize(0);
+  fitText.SetTextAlign(12);
+  fitText.SetTextSize(0.045);
+  std::ostringstream equation;
+  equation << "Fit: y = " << std::setprecision(5) << fit.intercept << " + "
+           << fit.slope << " x";
+  std::ostringstream r2Text;
+  r2Text << "R^{2} = " << std::setprecision(6) << fit.r2;
+  fitText.AddText(equation.str().c_str());
+  fitText.AddText(r2Text.str().c_str());
+  fitText.Draw("SAME");
 
   bottom.cd();
   TH2D bottomFrame(
