@@ -11,12 +11,18 @@ set (CMAKE_CXX_FLAGS "-fPIC")
 add_library(JsonCpp SHARED src/jsoncpp.cpp)
 target_include_directories(JsonCpp PUBLIC ${PROJECT_SOURCE_DIR}/include/json)
 
-# build library libMDMFieldMapTransport
-add_library (MDMFieldMapTransport SHARED
+# standalone field-map reader/interpolator
+add_library(MDMFieldMap SHARED
     src/MDMFieldMap.cpp
+)
+target_include_directories(MDMFieldMap PUBLIC ${PROJECT_SOURCE_DIR}/include)
+
+# field-map ray transport, no Fortran dependency
+add_library (MDMFieldMapTransport SHARED
     src/MDMFieldMapTrace.cpp
 )
 target_include_directories(MDMFieldMapTransport PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(MDMFieldMapTransport PUBLIC MDMFieldMap)
 
 # build library libMDMTraceFit
 add_library (MDMTrace SHARED
@@ -33,7 +39,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE MDMTrace JsonCpp)
 
 add_executable(MDMFieldMapGenerator src/MDMFieldMapGenerator.cpp)
 target_include_directories(MDMFieldMapGenerator PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MDMFieldMapGenerator PRIVATE MDMTrace MDMFieldMapTransport JsonCpp)
+target_link_libraries(MDMFieldMapGenerator PRIVATE MDMTrace MDMFieldMap JsonCpp)
 
 add_executable(MDMFieldMapTraceExample MDMFieldMapTraceExample.cpp)
 target_include_directories(MDMFieldMapTraceExample PRIVATE ${PROJECT_SOURCE_DIR}/include)

@@ -251,28 +251,38 @@ MDMFieldMap BuildMap(const std::string& magnetName,
     }
   }
 
-  MDMFieldMapMetadata metadata;
-  metadata.magnetName = magnetName;
-  metadata.nx = grid.counts[0];
-  metadata.ny = grid.counts[1];
-  metadata.nz = grid.counts[2];
-  metadata.originCm = {grid.min[0], grid.min[1], grid.min[2]};
-  metadata.spacingCm = spacing;
-  metadata.fields["version"] = "1";
-  metadata.fields["payload_layout"] = "component_major_x_fastest_float32";
-  metadata.fields["sampling_method"] = "direct_raytrace";
-  metadata.fields["axis_definition"] = extraFields.at("axis_definition");
-  metadata.fields["masked_zero_region"] = extraFields.at("masked_zero_region");
-  metadata.fields["mdm_dipole_probe"] = extraFields.at("mdm_dipole_probe");
-  metadata.fields["mdm_multipole_probe"] =
-      extraFields.at("mdm_multipole_probe");
+  MDMFieldMapHeader header;
+  header.magnet = magnetName;
+  header.nx = static_cast<int>(grid.counts[0]);
+  header.ny = static_cast<int>(grid.counts[1]);
+  header.nz = static_cast<int>(grid.counts[2]);
+  header.origin_cm = {grid.min[0], grid.min[1], grid.min[2]};
+  header.step_cm = {spacing[0], spacing[1], spacing[2]};
+  header.payload_layout = "component_major_x_fastest_float32";
+  header.axis_definition = extraFields.at("axis_definition");
+  if (extraFields.find("coordinate_system") != extraFields.end()) {
+    header.coordinate_system = extraFields.at("coordinate_system");
+  }
+  header.mdm_dipole_probe = std::stod(extraFields.at("mdm_dipole_probe"));
+  header.mdm_multipole_probe =
+      std::stod(extraFields.at("mdm_multipole_probe"));
+  if (extraFields.find("multipole_aperture_radius_cm") != extraFields.end()) {
+    header.aperture_radius_cm =
+        std::stod(extraFields.at("multipole_aperture_radius_cm"));
+  }
+  header.extra["version"] = "1";
+  header.extra["sampling_method"] = "direct_raytrace";
+  header.extra["masked_zero_region"] = extraFields.at("masked_zero_region");
   for (const auto& [key, value] : extraFields) {
-    if (metadata.fields.find(key) == metadata.fields.end()) {
-      metadata.fields[key] = value;
+    if (key != "axis_definition" && key != "coordinate_system" &&
+        key != "mdm_dipole_probe" &&
+        key != "mdm_multipole_probe" &&
+        key != "multipole_aperture_radius_cm") {
+      header.extra[key] = value;
     }
   }
 
-  return MDMFieldMap(std::move(metadata), std::move(bx), std::move(by),
+  return MDMFieldMap(std::move(header), std::move(bx), std::move(by),
                      std::move(bz));
 }
 
@@ -347,6 +357,7 @@ int main(int argc, char* argv[]) {
     std::map<std::string, std::string> multipoleFields{
         {"axis_definition",
          "origin=center; +z=beam; +x,+y transverse; beam from -z to +z"},
+        {"coordinate_system", "multipole_local_cartesian"},
         {"masked_zero_region", "true"},
         {"multipole_aperture_radius_cm", FormatDouble(multipoleRadius)},
         {"multipole_transition_planes_cm",
@@ -437,6 +448,7 @@ int main(int argc, char* argv[]) {
     {
       auto fields = sharedDipoleFields;
       fields["dipole_region"] = "entrance_fringe";
+      fields["coordinate_system"] = "dipole_entrance_frame";
       fields["axis_definition"] =
           "coords=(xB,y,zB)_cm; fields=(Bx,By,Bz)_dipole_local";
       writeMap("DipoleEntrance", dipoleEntranceGrid, dipoleEntranceEvaluator,
@@ -445,6 +457,7 @@ int main(int argc, char* argv[]) {
     {
       auto fields = sharedDipoleFields;
       fields["dipole_region"] = "sector";
+      fields["coordinate_system"] = "dipole_sector_frame";
       fields["raytrace_sector_frame"] = "c_axis";
       fields["axis_definition"] =
           "coords=(dr,y,s)_cm; dr=r-RB; s=RB*theta; fields=(Bx,By,Bz)_dipole_local";
@@ -454,6 +467,7 @@ int main(int argc, char* argv[]) {
     {
       auto fields = sharedDipoleFields;
       fields["dipole_region"] = "exit_fringe";
+      fields["coordinate_system"] = "dipole_exit_frame";
       fields["axis_definition"] =
           "coords=(xC,y,zC)_cm; fields=(Bx,By,Bz)_dipole_local";
       writeMap("DipoleExit", dipoleExitGrid, dipoleExitEvaluator, fields,

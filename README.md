@@ -21,7 +21,7 @@ The project has five main user-facing executables:
 At the library level, the repo exposes three main C++ interfaces:
 
 - `MDMTrace`: thin wrapper around the original Fortran tracer and common blocks.
-- `MDMFieldMap`: binary field-map loader, saver, and trilinear interpolator.
+- `MDMFieldMap`: standalone binary field-map loader, saver, and trilinear interpolator.
 - `MDMFieldMapTrace`: Fortran-free field-map-based transport validator for the current MDM beamline.
 
 ## Repository Structure
@@ -47,6 +47,8 @@ cmake --build build -j4
 
 The build produces:
 
+- `build/libMDMFieldMap.*`
+- `build/libMDMFieldMapTransport.*`
 - `build/MDMTraceExample`
 - `build/MDMFieldMapGenerator`
 - `build/MDMFieldMapTraceExample`
@@ -434,6 +436,21 @@ z = origin_z + iz * dz
 
 where `origin_cm = origin_x origin_y origin_z` and `spacing_cm = dx dy dz`.
 
+### Using `MDMFieldMap` Elsewhere
+
+`include/MDMFieldMap.h` and `src/MDMFieldMap.cpp` are intentionally standalone. They can be copied into another project without RAYTRACE, ROOT, JSON, or the field-map validator.
+
+Minimal use:
+
+```cpp
+MDMFieldMap map("Multipole.bin");
+Vec3 b = map.FieldTesla(x_cm, y_cm, z_cm);
+```
+
+The input position must already be in the map's local magnet coordinate system and in centimeters. The returned field is in Tesla and in the stored local field frame. External code should handle any global-to-local coordinate transform before calling `FieldTesla`, and any local-to-global field rotation after the call. `FieldTesla` returns zero outside the stored box or outside the multipole aperture mask.
+
+The typed header is available as `map.h`; unrecognized header fields are kept in `map.h.extra`.
+
 ### Common Header Keys
 
 These keys are written for both map types:
@@ -448,6 +465,7 @@ These keys are written for both map types:
 | `origin_cm` | Grid origin in centimeters. |
 | `spacing_cm` | Grid spacing in centimeters. |
 | `axis_definition` | Human-readable axis convention for the map. |
+| `coordinate_system` | Optional short coordinate-system label for external consumers. |
 | `payload_layout` | Current value is `component_major_x_fastest_float32`. |
 | `sampling_method` | Current value is `direct_raytrace`. |
 | `masked_zero_region` | `true` if regions outside the physical magnet are stored in the grid but evaluate to zero. |
@@ -523,4 +541,3 @@ Compare the final values:
 - This is not a generic RAYTRACE deck runner. The current field-map workflow is specific to the MDM deck shipped in this repository.
 - The field maps contain magnetic fields only. Drifts, collimators, and the inactive second multipole are handled separately by the validator or downstream transport code.
 - The second multipole is currently treated as zero-field.
-- The example apps scan input angles only. They do not currently scan initial target position offsets.

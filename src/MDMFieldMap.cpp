@@ -1,70 +1,74 @@
 #include "MDMFieldMap.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
-#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
-#include <string>
+#include <utility>
 
 namespace {
 
-std::array<double, 3> ParseTriple(const std::string& value) {
-  std::istringstream stream(value);
-  std::array<double, 3> triple{};
-  if (!(stream >> triple[0] >> triple[1] >> triple[2])) {
-    throw std::runtime_error("Failed to parse triple value: " + value);
-  }
-  return triple;
-}
-
-std::size_t ParseSize(const std::string& value) {
-  return static_cast<std::size_t>(std::stoull(value));
-}
-
-double ParseDouble(const std::string& value) { return std::stod(value); }
-
-std::string Trim(const std::string& value) {
-  const auto begin = value.find_first_not_of(" \t\r\n");
-  if (begin == std::string::npos) {
+std::string Trim(const std::string& s) {
+  const auto b = s.find_first_not_of(" \t\r\n");
+  if (b == std::string::npos) {
     return "";
   }
-  const auto end = value.find_last_not_of(" \t\r\n");
-  return value.substr(begin, end - begin + 1);
+  const auto e = s.find_last_not_of(" \t\r\n");
+  return s.substr(b, e - b + 1);
 }
 
-double Lerp(double a, double b, double t) {
-  return a + (b - a) * t;
+Vec3 Triple(const std::string& s) {
+  Vec3 v;
+  std::istringstream in(s);
+  in >> v.x >> v.y >> v.z;
+  return v;
 }
+
+void WriteIf(std::ostream& out, const char* key, const std::string& value) {
+  if (!value.empty()) {
+    out << key << "=" << value << "\n";
+  }
+}
+
+bool WrittenByHeader(const std::string& key) {
+  return key == "version" || key == "magnet" || key == "units_length" ||
+         key == "units_field" || key == "nx" || key == "ny" || key == "nz" ||
+         key == "origin_cm" || key == "spacing_cm" ||
+         key == "payload_layout" || key == "axis_definition" ||
+         key == "coordinate_system" || key == "mdm_dipole_probe" ||
+         key == "mdm_multipole_probe" ||
+         key == "multipole_aperture_radius_cm";
+}
+
+double Lerp(double a, double b, double t) { return a + (b - a) * t; }
 
 }  // namespace
 
-MDMFieldMap::MDMFieldMap(MDMFieldMapMetadata metadata,
-                         std::vector<float> bx,
-                         std::vector<float> by,
-                         std::vector<float> bz)
-    : metadata_(std::move(metadata)),
-      bx_(std::move(bx)),
-      by_(std::move(by)),
-      bz_(std::move(bz)) {
-  const std::size_t expectedSize = metadata_.nx * metadata_.ny * metadata_.nz;
-  if (bx_.size() != expectedSize || by_.size() != expectedSize ||
-      bz_.size() != expectedSize) {
-    throw std::runtime_error("Field map payload size does not match metadata");
+MDMFieldMap::MDMFieldMap(const std::string& file) { Load(file); }
+
+MDMFieldMap::MDMFieldMap(MDMFieldMapHeader header,
+                         std::vector<float> bxIn,
+                         std::vector<float> byIn,
+                         std::vector<float> bzIn)
+    : h(std::move(header)),
+      bx(std::move(bxIn)),
+      by(std::move(byIn)),
+      bz(std::move(bzIn)) {
+  if (bx.size() != Size() || by.size() != Size() || bz.size() != Size()) {
+    throw std::runtime_error("field-map payload size does not match header");
   }
 }
 
-MDMFieldMap MDMFieldMap::Load(const std::string& path) {
-  std::ifstream stream(path, std::ios::binary);
-  if (!stream) {
-    throw std::runtime_error("Unable to open field map: " + path);
+void MDMFieldMap::Load(const std::string& file) {
+  std::ifstream in(file, std::ios::binary);
+  if (!in) {
+    throw std::runtime_error("cannot open field map: " + file);
   }
 
-  MDMFieldMapMetadata metadata;
+  std::map<std::string, std::string> kv;
   std::string line;
-  while (std::getline(stream, line)) {
+  while (std::getline(in, line)) {
     line = Trim(line);
     if (line == "END_HEADER") {
       break;
@@ -72,171 +76,157 @@ MDMFieldMap MDMFieldMap::Load(const std::string& path) {
     if (line.empty()) {
       continue;
     }
-
-    const auto separator = line.find('=');
-    if (separator == std::string::npos) {
-      throw std::runtime_error("Malformed header line: " + line);
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("bad field-map header line: " + line);
     }
-
-    const std::string key = Trim(line.substr(0, separator));
-    const std::string value = Trim(line.substr(separator + 1));
-    metadata.fields[key] = value;
+    kv[Trim(line.substr(0, eq))] = Trim(line.substr(eq + 1));
   }
 
-  metadata.magnetName = metadata.fields.at("magnet");
-  metadata.nx = ParseSize(metadata.fields.at("nx"));
-  metadata.ny = ParseSize(metadata.fields.at("ny"));
-  metadata.nz = ParseSize(metadata.fields.at("nz"));
-  metadata.originCm = ParseTriple(metadata.fields.at("origin_cm"));
-  metadata.spacingCm = ParseTriple(metadata.fields.at("spacing_cm"));
-
-  const std::size_t payloadSize = metadata.nx * metadata.ny * metadata.nz;
-  std::vector<float> bx(payloadSize);
-  std::vector<float> by(payloadSize);
-  std::vector<float> bz(payloadSize);
-
-  stream.read(reinterpret_cast<char*>(bx.data()),
-              static_cast<std::streamsize>(payloadSize * sizeof(float)));
-  stream.read(reinterpret_cast<char*>(by.data()),
-              static_cast<std::streamsize>(payloadSize * sizeof(float)));
-  stream.read(reinterpret_cast<char*>(bz.data()),
-              static_cast<std::streamsize>(payloadSize * sizeof(float)));
-
-  if (!stream) {
-    throw std::runtime_error("Failed to read field map payload: " + path);
+  h = MDMFieldMapHeader{};
+  h.magnet = kv.at("magnet");
+  h.nx = std::stoi(kv.at("nx"));
+  h.ny = std::stoi(kv.at("ny"));
+  h.nz = std::stoi(kv.at("nz"));
+  h.origin_cm = Triple(kv.at("origin_cm"));
+  h.step_cm = Triple(kv.at("spacing_cm"));
+  if (kv.count("payload_layout")) {
+    h.payload_layout = kv["payload_layout"];
   }
-
-  return MDMFieldMap(std::move(metadata), std::move(bx), std::move(by),
-                     std::move(bz));
-}
-
-void MDMFieldMap::Save(const std::string& path) const {
-  std::ofstream stream(path, std::ios::binary);
-  if (!stream) {
-    throw std::runtime_error("Unable to create field map: " + path);
+  if (kv.count("axis_definition")) {
+    h.axis_definition = kv["axis_definition"];
   }
-
-  stream << "version=" << metadata_.fields.at("version") << "\n";
-  stream << "magnet=" << metadata_.magnetName << "\n";
-  stream << "units_length=cm\n";
-  stream << "units_field=Tesla\n";
-  stream << "nx=" << metadata_.nx << "\n";
-  stream << "ny=" << metadata_.ny << "\n";
-  stream << "nz=" << metadata_.nz << "\n";
-  stream << "origin_cm=" << metadata_.originCm[0] << " " << metadata_.originCm[1]
-         << " " << metadata_.originCm[2] << "\n";
-  stream << "spacing_cm=" << metadata_.spacingCm[0] << " "
-         << metadata_.spacingCm[1] << " " << metadata_.spacingCm[2] << "\n";
-
-  for (const auto& [key, value] : metadata_.fields) {
-    if (key == "version" || key == "magnet" || key == "nx" || key == "ny" ||
-        key == "nz" || key == "origin_cm" || key == "spacing_cm") {
-      continue;
+  if (kv.count("coordinate_system")) {
+    h.coordinate_system = kv["coordinate_system"];
+  }
+  if (kv.count("mdm_dipole_probe")) {
+    h.mdm_dipole_probe = std::stod(kv["mdm_dipole_probe"]);
+  }
+  if (kv.count("mdm_multipole_probe")) {
+    h.mdm_multipole_probe = std::stod(kv["mdm_multipole_probe"]);
+  }
+  if (kv.count("multipole_aperture_radius_cm")) {
+    h.aperture_radius_cm = std::stod(kv["multipole_aperture_radius_cm"]);
+  }
+  for (const auto& item : kv) {
+    if (!WrittenByHeader(item.first)) {
+      h.extra[item.first] = item.second;
     }
-    stream << key << "=" << value << "\n";
   }
 
-  stream << "END_HEADER\n";
-  stream.write(reinterpret_cast<const char*>(bx_.data()),
-               static_cast<std::streamsize>(bx_.size() * sizeof(float)));
-  stream.write(reinterpret_cast<const char*>(by_.data()),
-               static_cast<std::streamsize>(by_.size() * sizeof(float)));
-  stream.write(reinterpret_cast<const char*>(bz_.data()),
-               static_cast<std::streamsize>(bz_.size() * sizeof(float)));
-
-  if (!stream) {
-    throw std::runtime_error("Failed to write field map payload: " + path);
+  bx.assign(Size(), 0.0f);
+  by.assign(Size(), 0.0f);
+  bz.assign(Size(), 0.0f);
+  in.read(reinterpret_cast<char*>(bx.data()),
+          static_cast<std::streamsize>(bx.size() * sizeof(float)));
+  in.read(reinterpret_cast<char*>(by.data()),
+          static_cast<std::streamsize>(by.size() * sizeof(float)));
+  in.read(reinterpret_cast<char*>(bz.data()),
+          static_cast<std::streamsize>(bz.size() * sizeof(float)));
+  if (!in) {
+    throw std::runtime_error("cannot read field-map payload: " + file);
   }
 }
 
-std::array<double, 3> MDMFieldMap::Evaluate(double xCm,
-                                            double yCm,
-                                            double zCm) const {
-  const auto within = [&](double coord, double origin, double spacing,
-                          std::size_t count) {
-    const double maxCoord = origin + spacing * static_cast<double>(count - 1);
-    return coord >= origin && coord <= maxCoord;
-  };
-
-  if (!within(xCm, metadata_.originCm[0], metadata_.spacingCm[0], metadata_.nx) ||
-      !within(yCm, metadata_.originCm[1], metadata_.spacingCm[1], metadata_.ny) ||
-      !within(zCm, metadata_.originCm[2], metadata_.spacingCm[2], metadata_.nz)) {
-    return {0.0, 0.0, 0.0};
+void MDMFieldMap::Save(const std::string& file) const {
+  std::ofstream out(file, std::ios::binary);
+  if (!out) {
+    throw std::runtime_error("cannot create field map: " + file);
   }
 
-  const auto aperture = metadata_.fields.find("multipole_aperture_radius_cm");
-  if (aperture != metadata_.fields.end()) {
-    const double radiusCm = std::stod(aperture->second);
-    if (xCm * xCm + yCm * yCm > radiusCm * radiusCm) {
-      return {0.0, 0.0, 0.0};
+  const auto version = h.extra.find("version");
+  out << "version=" << (version == h.extra.end() ? "1" : version->second)
+      << "\n";
+  out << "magnet=" << h.magnet << "\n";
+  out << "units_length=cm\n";
+  out << "units_field=Tesla\n";
+  out << "nx=" << h.nx << "\n";
+  out << "ny=" << h.ny << "\n";
+  out << "nz=" << h.nz << "\n";
+  out << "origin_cm=" << h.origin_cm.x << " " << h.origin_cm.y << " "
+      << h.origin_cm.z << "\n";
+  out << "spacing_cm=" << h.step_cm.x << " " << h.step_cm.y << " "
+      << h.step_cm.z << "\n";
+  WriteIf(out, "payload_layout", h.payload_layout);
+  WriteIf(out, "axis_definition", h.axis_definition);
+  WriteIf(out, "coordinate_system", h.coordinate_system);
+  out << "mdm_dipole_probe=" << h.mdm_dipole_probe << "\n";
+  out << "mdm_multipole_probe=" << h.mdm_multipole_probe << "\n";
+  if (h.aperture_radius_cm > 0.0) {
+    out << "multipole_aperture_radius_cm=" << h.aperture_radius_cm << "\n";
+  }
+  for (const auto& item : h.extra) {
+    if (!WrittenByHeader(item.first)) {
+      out << item.first << "=" << item.second << "\n";
     }
   }
 
-  const auto positionToIndex = [](double coord, double origin, double spacing,
-                                  std::size_t count, std::size_t* i0,
-                                  std::size_t* i1, double* fraction) {
-    const double scaled = (coord - origin) / spacing;
-    const double clamped = std::min(
-        std::max(scaled, 0.0), static_cast<double>(count - 1) - 1.0e-12);
-    *i0 = static_cast<std::size_t>(std::floor(clamped));
-    *i1 = std::min(*i0 + 1, count - 1);
-    *fraction = clamped - static_cast<double>(*i0);
+  out << "END_HEADER\n";
+  out.write(reinterpret_cast<const char*>(bx.data()),
+            static_cast<std::streamsize>(bx.size() * sizeof(float)));
+  out.write(reinterpret_cast<const char*>(by.data()),
+            static_cast<std::streamsize>(by.size() * sizeof(float)));
+  out.write(reinterpret_cast<const char*>(bz.data()),
+            static_cast<std::streamsize>(bz.size() * sizeof(float)));
+}
+
+bool MDMFieldMap::Inside(double x, double y, double z) const {
+  const auto inAxis = [](double q, double q0, double dq, int n) {
+    const double q1 = q0 + dq * static_cast<double>(n - 1);
+    return q >= q0 && q <= q1;
+  };
+  if (!inAxis(x, h.origin_cm.x, h.step_cm.x, h.nx) ||
+      !inAxis(y, h.origin_cm.y, h.step_cm.y, h.ny) ||
+      !inAxis(z, h.origin_cm.z, h.step_cm.z, h.nz)) {
+    return false;
+  }
+  return h.aperture_radius_cm <= 0.0 ||
+         x * x + y * y <= h.aperture_radius_cm * h.aperture_radius_cm;
+}
+
+Vec3 MDMFieldMap::FieldTesla(double x, double y, double z) const {
+  if (!Inside(x, y, z)) {
+    return {};
+  }
+
+  const auto index1 = [](double q, double q0, double dq, int n, int& i0,
+                         int& i1, double& t) {
+    const double u = (q - q0) / dq;
+    const double uc = std::min(std::max(u, 0.0),
+                               static_cast<double>(n - 1) - 1.0e-12);
+    i0 = static_cast<int>(std::floor(uc));
+    i1 = std::min(i0 + 1, n - 1);
+    t = uc - static_cast<double>(i0);
   };
 
-  std::size_t x0 = 0;
-  std::size_t x1 = 0;
-  std::size_t y0 = 0;
-  std::size_t y1 = 0;
-  std::size_t z0 = 0;
-  std::size_t z1 = 0;
-  double tx = 0.0;
-  double ty = 0.0;
-  double tz = 0.0;
+  int x0, x1, y0, y1, z0, z1;
+  double tx, ty, tz;
+  index1(x, h.origin_cm.x, h.step_cm.x, h.nx, x0, x1, tx);
+  index1(y, h.origin_cm.y, h.step_cm.y, h.ny, y0, y1, ty);
+  index1(z, h.origin_cm.z, h.step_cm.z, h.nz, z0, z1, tz);
 
-  positionToIndex(xCm, metadata_.originCm[0], metadata_.spacingCm[0],
-                  metadata_.nx, &x0, &x1, &tx);
-  positionToIndex(yCm, metadata_.originCm[1], metadata_.spacingCm[1],
-                  metadata_.ny, &y0, &y1, &ty);
-  positionToIndex(zCm, metadata_.originCm[2], metadata_.spacingCm[2],
-                  metadata_.nz, &z0, &z1, &tz);
-
-  const auto interpolateComponent = [&](const std::vector<float>& component) {
-    const auto sample = [&](std::size_t ix, std::size_t iy, std::size_t iz) {
-      return static_cast<double>(component[Index(ix, iy, iz)]);
+  const auto interpolate = [&](const std::vector<float>& c) {
+    const auto s = [&](int ix, int iy, int iz) {
+      return static_cast<double>(c[Index(ix, iy, iz)]);
     };
-
-    const double c000 = sample(x0, y0, z0);
-    const double c100 = sample(x1, y0, z0);
-    const double c010 = sample(x0, y1, z0);
-    const double c110 = sample(x1, y1, z0);
-    const double c001 = sample(x0, y0, z1);
-    const double c101 = sample(x1, y0, z1);
-    const double c011 = sample(x0, y1, z1);
-    const double c111 = sample(x1, y1, z1);
-
-    const double c00 = Lerp(c000, c100, tx);
-    const double c10 = Lerp(c010, c110, tx);
-    const double c01 = Lerp(c001, c101, tx);
-    const double c11 = Lerp(c011, c111, tx);
-    const double c0 = Lerp(c00, c10, ty);
-    const double c1 = Lerp(c01, c11, ty);
-    return Lerp(c0, c1, tz);
+    const double c00 = Lerp(s(x0, y0, z0), s(x1, y0, z0), tx);
+    const double c10 = Lerp(s(x0, y1, z0), s(x1, y1, z0), tx);
+    const double c01 = Lerp(s(x0, y0, z1), s(x1, y0, z1), tx);
+    const double c11 = Lerp(s(x0, y1, z1), s(x1, y1, z1), tx);
+    return Lerp(Lerp(c00, c10, ty), Lerp(c01, c11, ty), tz);
   };
 
-  return {interpolateComponent(bx_), interpolateComponent(by_),
-          interpolateComponent(bz_)};
+  return {interpolate(bx), interpolate(by), interpolate(bz)};
 }
 
-const MDMFieldMapMetadata& MDMFieldMap::GetMetadata() const { return metadata_; }
+std::size_t MDMFieldMap::Index(int ix, int iy, int iz) const {
+  return static_cast<std::size_t>(ix) +
+         static_cast<std::size_t>(h.nx) *
+             (static_cast<std::size_t>(iy) +
+              static_cast<std::size_t>(h.ny) * static_cast<std::size_t>(iz));
+}
 
-const std::vector<float>& MDMFieldMap::GetBx() const { return bx_; }
-
-const std::vector<float>& MDMFieldMap::GetBy() const { return by_; }
-
-const std::vector<float>& MDMFieldMap::GetBz() const { return bz_; }
-
-std::size_t MDMFieldMap::Index(std::size_t ix,
-                               std::size_t iy,
-                               std::size_t iz) const {
-  return ix + metadata_.nx * (iy + metadata_.ny * iz);
+std::size_t MDMFieldMap::Size() const {
+  return static_cast<std::size_t>(h.nx) * static_cast<std::size_t>(h.ny) *
+         static_cast<std::size_t>(h.nz);
 }

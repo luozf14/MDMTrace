@@ -1,7 +1,6 @@
 #include "MDMFieldMapTrace.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -85,14 +84,6 @@ double DegreesToRadians(double degrees) {
   return degrees * kRadiansPerDegree;
 }
 
-double MetadataDouble(const MDMFieldMap& map, const std::string& key) {
-  const auto it = map.GetMetadata().fields.find(key);
-  if (it == map.GetMetadata().fields.end()) {
-    throw std::runtime_error("Missing field-map metadata entry: " + key);
-  }
-  return std::stod(it->second);
-}
-
 bool NearlyEqual(double lhs, double rhs) {
   const double scale = std::max({1.0, std::abs(lhs), std::abs(rhs)});
   return std::abs(lhs - rhs) <= kProbeTolerance * scale;
@@ -119,18 +110,18 @@ State CombineForRK4(const State& k1,
           (k1.vz + 2.0 * k2.vz + 2.0 * k3.vz + k4.vz) / 6.0};
 }
 
-using FieldFunction = std::function<std::array<double, 3>(const State&)>;
+using FieldFunction = std::function<Vec3(const State&)>;
 using PlaneFunction = std::function<double(const State&)>;
 
 State Derivative(const State& state,
-                 const std::array<double, 3>& fieldTesla,
+                 const Vec3& fieldTesla,
                  double kFactor) {
   return {state.vx,
           state.vy,
           state.vz,
-          kFactor * (state.vy * fieldTesla[2] - state.vz * fieldTesla[1]),
-          kFactor * (state.vz * fieldTesla[0] - state.vx * fieldTesla[2]),
-          kFactor * (state.vx * fieldTesla[1] - state.vy * fieldTesla[0])};
+          kFactor * (state.vy * fieldTesla.z - state.vz * fieldTesla.y),
+          kFactor * (state.vz * fieldTesla.x - state.vx * fieldTesla.z),
+          kFactor * (state.vx * fieldTesla.y - state.vy * fieldTesla.x)};
 }
 
 State RK4Step(const State& state,
@@ -227,16 +218,15 @@ double OutputAngleYDegrees(const State& state, double speedCmPerSecond) {
 }
 
 bool InMapBounds(const MDMFieldMap& map, double x, double y, double z) {
-  const auto& metadata = map.GetMetadata();
   const auto within = [](double coord, double origin, double spacing,
-                         std::size_t count) {
+                         int count) {
     const double maxCoord = origin + spacing * static_cast<double>(count - 1);
     const double tolerance = 1.0e-9;
     return coord >= origin - tolerance && coord <= maxCoord + tolerance;
   };
-  return within(x, metadata.originCm[0], metadata.spacingCm[0], metadata.nx) &&
-         within(y, metadata.originCm[1], metadata.spacingCm[1], metadata.ny) &&
-         within(z, metadata.originCm[2], metadata.spacingCm[2], metadata.nz);
+  return within(x, map.h.origin_cm.x, map.h.step_cm.x, map.h.nx) &&
+         within(y, map.h.origin_cm.y, map.h.step_cm.y, map.h.ny) &&
+         within(z, map.h.origin_cm.z, map.h.step_cm.z, map.h.nz);
 }
 
 }  // namespace
@@ -247,10 +237,10 @@ void MDMFieldMapTrace::LoadFieldMaps(const std::string& multipolePath,
                                      const std::string& dipoleEntrancePath,
                                      const std::string& dipoleSectorPath,
                                      const std::string& dipoleExitPath) {
-  multipoleMap_ = MDMFieldMap::Load(multipolePath);
-  dipoleEntranceMap_ = MDMFieldMap::Load(dipoleEntrancePath);
-  dipoleSectorMap_ = MDMFieldMap::Load(dipoleSectorPath);
-  dipoleExitMap_ = MDMFieldMap::Load(dipoleExitPath);
+  multipoleMap_.Load(multipolePath);
+  dipoleEntranceMap_.Load(dipoleEntrancePath);
+  dipoleSectorMap_.Load(dipoleSectorPath);
+  dipoleExitMap_.Load(dipoleExitPath);
 
   mapsLoaded_ = true;
   ValidateLoadedMaps();
@@ -327,14 +317,13 @@ void MDMFieldMapTrace::ValidateLoadedMaps() const {
   mapsToCheck.push_back(&dipoleSectorMap_);
   mapsToCheck.push_back(&dipoleExitMap_);
 
-  const double referenceDipoleProbe =
-      MetadataDouble(*mapsToCheck.front(), "mdm_dipole_probe");
+  const double referenceDipoleProbe = mapsToCheck.front()->h.mdm_dipole_probe;
   const double referenceMultipoleProbe =
-      MetadataDouble(*mapsToCheck.front(), "mdm_multipole_probe");
+      mapsToCheck.front()->h.mdm_multipole_probe;
 
   for (const MDMFieldMap* map : mapsToCheck) {
-    const double dipoleProbe = MetadataDouble(*map, "mdm_dipole_probe");
-    const double multipoleProbe = MetadataDouble(*map, "mdm_multipole_probe");
+    const double dipoleProbe = map->h.mdm_dipole_probe;
+    const double multipoleProbe = map->h.mdm_multipole_probe;
     if (!NearlyEqual(referenceDipoleProbe, dipoleProbe) ||
         !NearlyEqual(referenceMultipoleProbe, multipoleProbe)) {
       throw std::runtime_error("Loaded field maps were generated with different "
@@ -452,7 +441,7 @@ void MDMFieldMapTrace::SendRay() {
     localState.z = multipoleStartZ;
 
     const FieldFunction fieldFunction = [&](const State& sample) {
-      return multipoleMap_.Evaluate(sample.x, sample.y, sample.z);
+      return multipoleMap_.FieldTesla(sample.x, sample.y, sample.z);
     };
     const PlaneFunction planeFunction = [&](const State& sample) {
       return sample.z - (b + 0.5 * l);
@@ -549,13 +538,13 @@ void MDMFieldMapTrace::SendRay() {
       const double xB = -sample.x * cosAlpha - sample.z * sinAlpha;
       const double zB = sample.x * sinAlpha - sample.z * cosAlpha;
       if (InMapBounds(dipoleEntranceMap_, xB, sample.y, zB)) {
-        return dipoleEntranceMap_.Evaluate(xB, sample.y, zB);
+        return dipoleEntranceMap_.FieldTesla(xB, sample.y, zB);
       }
 
       const double xC = -zB * sinRot - xB * cosRot - tx;
       const double zC = -zB * cosRot + xB * sinRot - tz;
       if (InMapBounds(dipoleExitMap_, xC, sample.y, zC)) {
-        return dipoleExitMap_.Evaluate(xC, sample.y, zC);
+        return dipoleExitMap_.FieldTesla(xC, sample.y, zC);
       }
 
       const double radialDistance =
@@ -565,9 +554,9 @@ void MDMFieldMapTrace::SendRay() {
       const double theta = std::atan2(sample.z, sample.x + radius);
       const double s = radius * theta;
       if (InMapBounds(dipoleSectorMap_, dr, sample.y, s)) {
-        return dipoleSectorMap_.Evaluate(dr, sample.y, s);
+        return dipoleSectorMap_.FieldTesla(dr, sample.y, s);
       }
-      return std::array<double, 3>{0.0, 0.0, 0.0};
+      return Vec3{};
     };
     const PlaneFunction planeFunction = [&](const State& sample) {
       return localToOutputD(sample).z;
