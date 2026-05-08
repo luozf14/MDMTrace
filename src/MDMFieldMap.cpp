@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -133,6 +134,7 @@ void MDMFieldMap::Save(const std::string& file) const {
   if (!out) {
     throw std::runtime_error("cannot create field map: " + file);
   }
+  out << std::setprecision(17);
 
   const auto version = h.extra.find("version");
   out << "version=" << (version == h.extra.end() ? "1" : version->second)

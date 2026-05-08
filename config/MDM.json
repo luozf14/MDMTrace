@@ -4,11 +4,11 @@
     "usingProbe"          : 0,
     "mdmAngle"            : 0,
     "mdmDipoleField"      : 2207.24728304,
-    "mdmDipoleProbe"      : 2561.60226272,
-    "mdmMultipoleProbe"   : 1818.73760653,
+    "mdmDipoleProbe"      : 2134.66855227,
+    "mdmMultipoleProbe"   : 1515.61467211,
 
     "scatteredMass"       : 12,
-    "scatteredCharge"     : 5,
+    "scatteredCharge"     : 6,
     "scatteredEnergy"     : 18,
     "scatteredAngles"     : [0],
 
