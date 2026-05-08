@@ -30,6 +30,7 @@ constexpr double kMradPerDegree = 1000.0 * 3.14159265358979323846 / 180.0;
 constexpr double kTraceMradPerDegree = 17.453;
 constexpr double kStoppedCm = 1.0e9;
 constexpr double kPercentToFraction = 0.01;
+constexpr double kFirstOrderPrintZero = 1.0e-10;
 constexpr std::size_t kInputDim = 5;
 constexpr std::size_t kOutputDim = 5;
 constexpr std::size_t kPhysicsOutputDim = 4;
@@ -109,18 +110,16 @@ struct SampleSlot {
   FitSample sample;
 };
 
-using Matrix5 = std::array<std::array<double, kInputDim>, kOutputDim>;
 using BasisVector = std::vector<double>;
 
-struct QuadraticTerm {
-  std::size_t first = 0;
-  std::size_t second = 0;
+struct Monomial {
+  std::array<unsigned int, kInputDim> powers{};
 };
 
 struct TransferMap {
   unsigned int order = 1;
-  Matrix5 first{};
-  std::array<std::array<double, 15>, kOutputDim> second{};
+  std::vector<Monomial> terms;
+  std::array<std::vector<double>, kOutputDim> coeff;
 };
 
 Json::Value ReadJson(const std::string& path) {
@@ -261,8 +260,8 @@ void CheckConfig(const Config& cfg, const IonOpticsConfig& optics) {
   if (optics.method != "fit") {
     throw std::runtime_error("GenerateIonOptics only supports method=fit");
   }
-  if (optics.order < 1 || optics.order > 2) {
-    throw std::runtime_error("ionOptics.order must be 1 or 2");
+  if (optics.order < 1 || optics.order > 5) {
+    throw std::runtime_error("ionOptics.order must be 1, 2, 3, 4, or 5");
   }
   if (cfg.massAmu <= 0.0) {
     throw std::runtime_error("scatteredMass must be positive");
@@ -339,43 +338,74 @@ std::array<double, kInputDim> InputDelta(const PhaseSpace& input,
           input.deltaPercent - reference.deltaPercent};
 }
 
-std::vector<QuadraticTerm> BuildQuadraticTerms() {
-  std::vector<QuadraticTerm> terms;
-  terms.reserve(15);
-  for (std::size_t first = 0; first < kInputDim; ++first) {
-    for (std::size_t second = first; second < kInputDim; ++second) {
-      terms.push_back({first, second});
-    }
+unsigned int Degree(const Monomial& term) {
+  unsigned int degree = 0;
+  for (unsigned int power : term.powers) {
+    degree += power;
+  }
+  return degree;
+}
+
+void AddMonomialsOfDegree(unsigned int remaining,
+                          std::size_t firstVariable,
+                          Monomial& term,
+                          std::vector<Monomial>& terms) {
+  if (remaining == 0) {
+    terms.push_back(term);
+    return;
+  }
+  for (std::size_t variable = firstVariable; variable < kInputDim; ++variable) {
+    ++term.powers[variable];
+    AddMonomialsOfDegree(remaining - 1, variable, term, terms);
+    --term.powers[variable];
+  }
+}
+
+std::vector<Monomial> BuildMonomials(unsigned int order) {
+  std::vector<Monomial> terms;
+  for (unsigned int degree = 1; degree <= order; ++degree) {
+    Monomial term;
+    AddMonomialsOfDegree(degree, 0, term, terms);
   }
   return terms;
 }
 
-std::vector<const char*> InputLabels() {
-  return {"x[mm]", "thetaX[mrad]", "y[mm]", "thetaY[mrad]",
-          "deltaP/P0[%]"};
+double MonomialValue(const std::array<double, kInputDim>& inputDelta,
+                     const Monomial& term) {
+  double value = 1.0;
+  for (std::size_t variable = 0; variable < kInputDim; ++variable) {
+    for (unsigned int power = 0; power < term.powers[variable]; ++power) {
+      value *= inputDelta[variable];
+    }
+  }
+  return value;
 }
 
-std::vector<std::string> QuadraticLabels() {
-  const std::vector<const char*> labels = InputLabels();
-  std::vector<std::string> result;
-  for (const QuadraticTerm& term : BuildQuadraticTerms()) {
-    result.push_back(std::string(labels[term.first]) + "*" +
-                     labels[term.second]);
+std::size_t LinearTermIndex(const std::vector<Monomial>& terms,
+                            std::size_t variable) {
+  for (std::size_t index = 0; index < terms.size(); ++index) {
+    if (Degree(terms[index]) == 1 && terms[index].powers[variable] == 1) {
+      return index;
+    }
   }
-  return result;
+  return terms.size();
+}
+
+std::string ExponentCode(const Monomial& term) {
+  std::string code;
+  code.reserve(kInputDim);
+  for (unsigned int power : term.powers) {
+    code += static_cast<char>('0' + power);
+  }
+  return code;
 }
 
 BasisVector BuildBasis(const std::array<double, kInputDim>& inputDelta,
-                       unsigned int order) {
+                       const std::vector<Monomial>& terms) {
   BasisVector basis;
-  basis.reserve(order >= 2 ? 20 : 5);
-  for (double value : inputDelta) {
-    basis.push_back(value);
-  }
-  if (order >= 2) {
-    for (const QuadraticTerm& term : BuildQuadraticTerms()) {
-      basis.push_back(inputDelta[term.first] * inputDelta[term.second]);
-    }
+  basis.reserve(terms.size());
+  for (const Monomial& term : terms) {
+    basis.push_back(MonomialValue(inputDelta, term));
   }
   return basis;
 }
@@ -384,19 +414,10 @@ std::array<double, kOutputDim> EvaluateMap(
     const TransferMap& map,
     const std::array<double, kInputDim>& inputDelta) {
   std::array<double, kOutputDim> result{};
+  const BasisVector basis = BuildBasis(inputDelta, map.terms);
   for (std::size_t row = 0; row < kOutputDim; ++row) {
-    for (std::size_t col = 0; col < kInputDim; ++col) {
-      result[row] += map.first[row][col] * inputDelta[col];
-    }
-  }
-  if (map.order >= 2) {
-    const std::vector<QuadraticTerm> terms = BuildQuadraticTerms();
-    for (std::size_t row = 0; row < kOutputDim; ++row) {
-      for (std::size_t termIndex = 0; termIndex < terms.size(); ++termIndex) {
-        const QuadraticTerm& term = terms[termIndex];
-        result[row] += map.second[row][termIndex] * inputDelta[term.first] *
-                       inputDelta[term.second];
-      }
+    for (std::size_t term = 0; term < map.terms.size(); ++term) {
+      result[row] += map.coeff[row][term] * basis[term];
     }
   }
   return result;
@@ -541,29 +562,135 @@ std::vector<FitSample> TraceGrid(const std::vector<PhaseSpace>& inputs,
   return samples;
 }
 
+std::vector<double> BuildColumnScales(const std::vector<FitSample>& samples,
+                                      const std::vector<Monomial>& terms,
+                                      unsigned int threads) {
+  std::vector<std::vector<double>> localMax(
+      threads, std::vector<double>(terms.size(), 0.0));
+
+  const auto runRange = [&](unsigned int worker, std::size_t begin,
+                            std::size_t end) {
+    for (std::size_t sampleIndex = begin; sampleIndex < end; ++sampleIndex) {
+      const BasisVector basis =
+          BuildBasis(samples[sampleIndex].inputDelta, terms);
+      for (std::size_t term = 0; term < terms.size(); ++term) {
+        localMax[worker][term] =
+            std::max(localMax[worker][term], std::abs(basis[term]));
+      }
+    }
+  };
+
+  if (threads == 1) {
+    runRange(0, 0, samples.size());
+  } else {
+    std::vector<std::thread> workers;
+    workers.reserve(threads);
+    for (unsigned int worker = 0; worker < threads; ++worker) {
+      const std::size_t begin = samples.size() * worker / threads;
+      const std::size_t end = samples.size() * (worker + 1) / threads;
+      workers.emplace_back(runRange, worker, begin, end);
+    }
+    for (std::thread& worker : workers) {
+      worker.join();
+    }
+  }
+
+  std::vector<double> scales(terms.size(), 1.0);
+  for (std::size_t term = 0; term < terms.size(); ++term) {
+    double maximum = 0.0;
+    for (unsigned int worker = 0; worker < threads; ++worker) {
+      maximum = std::max(maximum, localMax[worker][term]);
+    }
+    if (maximum > 0.0) {
+      scales[term] = 1.0 / maximum;
+    }
+  }
+  return scales;
+}
+
 TransferMap SolveMapWithRootSvd(const std::vector<FitSample>& samples,
-                                unsigned int order) {
-  const std::size_t basisTerms = BuildBasis(samples.front().inputDelta, order).size();
-  TMatrixD normal(static_cast<Int_t>(basisTerms), static_cast<Int_t>(basisTerms));
-  std::array<std::vector<double>, kOutputDim> rhs;
+                                unsigned int order,
+                                unsigned int threads) {
+  const std::vector<Monomial> terms = BuildMonomials(order);
+  const std::size_t basisTerms = terms.size();
+  const std::vector<double> columnScale =
+      BuildColumnScales(samples, terms, threads);
+
+  std::vector<std::vector<double>> localNormal(
+      threads, std::vector<double>(basisTerms * basisTerms, 0.0));
+  std::vector<std::array<std::vector<double>, kPhysicsOutputDim>> localRhs(
+      threads);
+  for (auto& rhs : localRhs) {
+    for (std::vector<double>& row : rhs) {
+      row.assign(basisTerms, 0.0);
+    }
+  }
+
+  const auto runRange = [&](unsigned int worker, std::size_t begin,
+                            std::size_t end) {
+    std::vector<double>& normal = localNormal[worker];
+    auto& rhs = localRhs[worker];
+    for (std::size_t sampleIndex = begin; sampleIndex < end; ++sampleIndex) {
+      BasisVector basis = BuildBasis(samples[sampleIndex].inputDelta, terms);
+      for (std::size_t term = 0; term < basisTerms; ++term) {
+        basis[term] *= columnScale[term];
+      }
+      for (std::size_t i = 0; i < basisTerms; ++i) {
+        const double bi = basis[i];
+        for (std::size_t j = i; j < basisTerms; ++j) {
+          normal[i * basisTerms + j] += bi * basis[j];
+        }
+        for (std::size_t row = 0; row < kPhysicsOutputDim; ++row) {
+          rhs[row][i] += samples[sampleIndex].outputDelta[row] * bi;
+        }
+      }
+    }
+  };
+
+  if (threads == 1) {
+    runRange(0, 0, samples.size());
+  } else {
+    std::vector<std::thread> workers;
+    workers.reserve(threads);
+    for (unsigned int worker = 0; worker < threads; ++worker) {
+      const std::size_t begin = samples.size() * worker / threads;
+      const std::size_t end = samples.size() * (worker + 1) / threads;
+      workers.emplace_back(runRange, worker, begin, end);
+    }
+    for (std::thread& worker : workers) {
+      worker.join();
+    }
+  }
+
+  TMatrixD normal(static_cast<Int_t>(basisTerms),
+                  static_cast<Int_t>(basisTerms));
+  std::array<std::vector<double>, kPhysicsOutputDim> rhs;
   for (std::vector<double>& row : rhs) {
     row.assign(basisTerms, 0.0);
   }
-
-  for (const FitSample& sample : samples) {
-    const BasisVector basis = BuildBasis(sample.inputDelta, order);
-    for (Int_t i = 0; i < static_cast<Int_t>(basisTerms); ++i) {
-      for (Int_t j = 0; j < static_cast<Int_t>(basisTerms); ++j) {
-        normal(i, j) += basis[i] * basis[j];
+  for (std::size_t i = 0; i < basisTerms; ++i) {
+    for (std::size_t j = i; j < basisTerms; ++j) {
+      double value = 0.0;
+      for (unsigned int worker = 0; worker < threads; ++worker) {
+        value += localNormal[worker][i * basisTerms + j];
       }
-      for (Int_t row = 0; row < static_cast<Int_t>(kOutputDim); ++row) {
-        rhs[row][i] += sample.outputDelta[row] * basis[i];
+      normal(static_cast<Int_t>(i), static_cast<Int_t>(j)) = value;
+      normal(static_cast<Int_t>(j), static_cast<Int_t>(i)) = value;
+    }
+    for (std::size_t row = 0; row < kPhysicsOutputDim; ++row) {
+      for (unsigned int worker = 0; worker < threads; ++worker) {
+        rhs[row][i] += localRhs[worker][row][i];
       }
     }
   }
 
   TransferMap map;
   map.order = order;
+  map.terms = terms;
+  for (std::vector<double>& row : map.coeff) {
+    row.assign(basisTerms, 0.0);
+  }
+
   TDecompSVD svd(normal);
   for (Int_t row = 0; row < static_cast<Int_t>(kPhysicsOutputDim); ++row) {
     TVectorD output(static_cast<Int_t>(basisTerms));
@@ -575,16 +702,14 @@ TransferMap SolveMapWithRootSvd(const std::vector<FitSample>& samples,
     if (!ok) {
       throw std::runtime_error("ROOT TDecompSVD failed to solve fit matrix");
     }
-    for (Int_t col = 0; col < static_cast<Int_t>(kInputDim); ++col) {
-      map.first[row][col] = coeff[col];
-    }
-    if (order >= 2) {
-      for (Int_t col = 0; col < 15; ++col) {
-        map.second[row][col] = coeff[static_cast<Int_t>(kInputDim) + col];
-      }
+    for (Int_t col = 0; col < static_cast<Int_t>(basisTerms); ++col) {
+      map.coeff[row][col] = coeff[col] * columnScale[col];
     }
   }
-  map.first[4] = {0.0, 0.0, 0.0, 0.0, 1.0};
+  const std::size_t deltaTerm = LinearTermIndex(map.terms, 4);
+  if (deltaTerm < map.terms.size()) {
+    map.coeff[4][deltaTerm] = 1.0;
+  }
   return map;
 }
 
@@ -594,11 +719,11 @@ TransferMap FitTransferMap(const std::vector<FitSample>& samples,
   if (samples.empty()) {
     throw std::runtime_error("not enough accepted rays for ion-optics fit");
   }
-  stats.basisTerms = BuildBasis(samples.front().inputDelta, order).size();
+  stats.basisTerms = BuildMonomials(order).size();
   if (stats.accepted < stats.basisTerms) {
     throw std::runtime_error("not enough accepted rays for ion-optics fit");
   }
-  const TransferMap map = SolveMapWithRootSvd(samples, order);
+  const TransferMap map = SolveMapWithRootSvd(samples, order, stats.threads);
   for (const FitSample& sample : samples) {
     const std::array<double, kOutputDim> predictedDelta =
         EvaluateMap(map, sample.inputDelta);
@@ -624,6 +749,52 @@ void WriteAxis(std::ostream& out, const char* label, const Axis& axis) {
       << " step=" << axis.step << " n=" << axis.values.size() << "\n";
 }
 
+double FirstOrderPrintValue(double value) {
+  return std::abs(value) < kFirstOrderPrintZero ? 0.0 : value;
+}
+
+double FirstOrderElement(const TransferMap& map,
+                         std::size_t row,
+                         std::size_t column) {
+  const std::size_t term = LinearTermIndex(map.terms, column);
+  return term < map.terms.size() ? map.coeff[row][term] : 0.0;
+}
+
+double FirstOrderDeterminant(const TransferMap& map) {
+  std::array<std::array<double, kInputDim>, kInputDim> matrix{};
+  for (std::size_t row = 0; row < kInputDim; ++row) {
+    for (std::size_t column = 0; column < kInputDim; ++column) {
+      matrix[row][column] = FirstOrderElement(map, row, column);
+    }
+  }
+
+  double determinant = 1.0;
+  for (std::size_t pivot = 0; pivot < kInputDim; ++pivot) {
+    std::size_t best = pivot;
+    for (std::size_t row = pivot + 1; row < kInputDim; ++row) {
+      if (std::abs(matrix[row][pivot]) > std::abs(matrix[best][pivot])) {
+        best = row;
+      }
+    }
+    if (std::abs(matrix[best][pivot]) < 1.0e-30) {
+      return 0.0;
+    }
+    if (best != pivot) {
+      std::swap(matrix[best], matrix[pivot]);
+      determinant = -determinant;
+    }
+    const double pivotValue = matrix[pivot][pivot];
+    determinant *= pivotValue;
+    for (std::size_t row = pivot + 1; row < kInputDim; ++row) {
+      const double factor = matrix[row][pivot] / pivotValue;
+      for (std::size_t column = pivot + 1; column < kInputDim; ++column) {
+        matrix[row][column] -= factor * matrix[pivot][column];
+      }
+    }
+  }
+  return determinant;
+}
+
 void WriteReport(std::ostream& out,
                  const std::string& configPath,
                  const Config& cfg,
@@ -631,10 +802,9 @@ void WriteReport(std::ostream& out,
                  const std::array<double, kOutputDim>& referenceOutput,
                  const TransferMap& map,
                  const FitStats& stats) {
-  const std::vector<const char*> columns = InputLabels();
-  const std::array<const char*, kOutputDim> rows{
-      "X1[mm]", "AngX1[mrad]", "Y1[mm]", "AngY1[mrad]", "deltaP/P0[%]"};
-  const std::vector<std::string> quadraticLabels = QuadraticLabels();
+  const std::array<const char*, kOutputDim> columns{
+      "X1[mm]", "AngX1[mrad]", "Y1[mm]", "AngY1[mrad]",
+      "deltaP/P0[%]"};
   const std::array<const char*, 4> residualLabels{"X1[mm]", "AngX1[mrad]",
                                                   "Y1[mm]", "AngY1[mrad]"};
 
@@ -677,47 +847,44 @@ void WriteReport(std::ostream& out,
         << stats.rmsResidual[i] << " MaxAbs=" << stats.maxAbsResidual[i]
         << "\n";
   }
-  out << "# expansion: output-referenceOutput = R*q";
-  if (map.order >= 2) {
-    out << " + T*(q_j*q_k)";
-  }
-  out << "\n";
+  out << "# expansion: output-referenceOutput = sum C_m * monomial_m(q)\n";
   out << "# q = [x[mm], thetaX[mrad], y[mm], thetaY[mrad], "
          "deltaP/P0[%]]\n";
-  out << "# second-order coefficients multiply q_j*q_k directly; no 1/2 "
-         "factor is applied\n";
-  out << "# first-order units are row unit divided by column unit\n";
-  out << std::scientific << std::setprecision(10);
-  out << "# First-order R matrix\n";
+  out << "# coefficients multiply monomials directly; no factorial factors "
+         "are applied\n";
+  out << "# human-readable first-order coefficients with abs(value)<1e-10 "
+         "are printed as zero\n";
+  out << std::uppercase << std::scientific << std::setprecision(10);
+  out << "# Human-readable first-order R matrix\n";
   out << std::setw(16) << "";
   for (const char* column : columns) {
     out << std::setw(18) << column;
   }
   out << "\n";
-  for (std::size_t row = 0; row < 5; ++row) {
-    out << std::setw(16) << rows[row];
-    for (std::size_t column = 0; column < 5; ++column) {
-      out << std::setw(18) << map.first[row][column];
+  for (std::size_t row = 0; row < kOutputDim; ++row) {
+    out << std::setw(16) << columns[row];
+    for (std::size_t column = 0; column < kInputDim; ++column) {
+      const double value = FirstOrderElement(map, row, column);
+      out << std::setw(18) << FirstOrderPrintValue(value);
     }
     out << "\n";
   }
+  out << "# det(first-order R) = " << FirstOrderDeterminant(map) << "\n";
 
-  if (map.order >= 2) {
-    out << "# Second-order T coefficients\n";
-    out << "# second-order units are row unit divided by product of the two "
-           "input units\n";
-    out << std::setw(16) << "";
-    for (const std::string& label : quadraticLabels) {
-      out << std::setw(32) << label;
+  out << "# COSY-style map columns: X1[mm] AngX1[mrad] Y1[mm] "
+         "AngY1[mrad] deltaP/P0[%] exponents\n";
+  out << "# exponent order: x thetaX y thetaY deltaP/P0[%]\n";
+  out << "#";
+  for (const char* column : columns) {
+    out << std::setw(18) << column;
+  }
+  out << std::setw(18) << "exponents" << "\n";
+  for (std::size_t term = 0; term < map.terms.size(); ++term) {
+    for (std::size_t row = 0; row < kOutputDim; ++row) {
+      out << std::setw(18) << map.coeff[row][term];
     }
+    out << "  " << ExponentCode(map.terms[term]);
     out << "\n";
-    for (std::size_t row = 0; row < 5; ++row) {
-      out << std::setw(16) << rows[row];
-      for (std::size_t term = 0; term < quadraticLabels.size(); ++term) {
-        out << std::setw(32) << map.second[row][term];
-      }
-      out << "\n";
-    }
   }
 }
 
