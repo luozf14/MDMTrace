@@ -192,6 +192,7 @@ Notes:
 
 - The default config is `${PROJECT_SOURCE_DIR}/config/MDMScan.json`.
 - The config can use the same ray-scan keys as the examples: `scatteredAngles`, `scatteredAnglePairs`, `scatteredAngleGrid`, and `scatteredEnergyGrid`.
+- `compareProcesses` optionally sets the number of worker processes. Missing or `0` uses hardware concurrency.
 - Residuals use the `Legacy - FieldMap` convention.
 
 ### `GenerateIonOptics`
