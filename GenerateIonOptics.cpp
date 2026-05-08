@@ -28,12 +28,15 @@ namespace {
 constexpr double kAmuMeV = 931.48;
 constexpr double kMradPerDegree = 1000.0 * 3.14159265358979323846 / 180.0;
 constexpr double kTraceMradPerDegree = 17.453;
+constexpr double kSpeedOfLightCmPerSecond = 3.0e10;
 constexpr double kStoppedCm = 1.0e9;
 constexpr double kPercentToFraction = 0.01;
 constexpr double kFirstOrderPrintZero = 1.0e-10;
-constexpr std::size_t kInputDim = 5;
-constexpr std::size_t kOutputDim = 5;
-constexpr std::size_t kPhysicsOutputDim = 4;
+constexpr std::size_t kInputDim = 6;
+constexpr std::size_t kOutputDim = 6;
+constexpr std::size_t kPhysicsOutputDim = 5;
+constexpr std::size_t kLIndex = 4;
+constexpr std::size_t kDeltaIndex = 5;
 
 struct Config {
   bool usingProbe = false;
@@ -54,6 +57,7 @@ struct PhaseSpace {
   double thetaXMrad = 0.0;
   double yMm = 0.0;
   double thetaYMrad = 0.0;
+  double lMm = 0.0;
   double deltaPercent = 0.0;
 };
 
@@ -85,6 +89,7 @@ struct IonOpticsConfig {
 
 struct TraceResult {
   bool stopped = false;
+  double tofSeconds = 0.0;
   std::array<double, kOutputDim> output{};
 };
 
@@ -93,10 +98,11 @@ struct FitStats {
   std::size_t accepted = 0;
   std::size_t stopped = 0;
   std::size_t basisTerms = 0;
+  std::size_t activeFitTerms = 0;
   unsigned int threads = 1;
   std::string firstSkippedReason;
-  std::array<double, 4> rmsResidual{};
-  std::array<double, 4> maxAbsResidual{};
+  std::array<double, kPhysicsOutputDim> rmsResidual{};
+  std::array<double, kPhysicsOutputDim> maxAbsResidual{};
 };
 
 struct FitSample {
@@ -120,6 +126,12 @@ struct TransferMap {
   unsigned int order = 1;
   std::vector<Monomial> terms;
   std::array<std::vector<double>, kOutputDim> coeff;
+};
+
+struct LongitudinalReference {
+  double tofSeconds = 0.0;
+  double speedCmPerSecond = 0.0;
+  double gamma = 1.0;
 };
 
 Json::Value ReadJson(const std::string& path) {
@@ -230,6 +242,7 @@ IonOpticsConfig ParseIonOpticsConfig(const Json::Value& json) {
     cfg.reference.thetaXMrad = GetDouble(reference, "thetaXMrad");
     cfg.reference.yMm = GetDouble(reference, "yMm");
     cfg.reference.thetaYMrad = GetDouble(reference, "thetaYMrad");
+    cfg.reference.lMm = GetDouble(reference, "lMm");
     cfg.referenceEnergyMeV =
         GetDouble(reference, "energyMeV", cfg.referenceEnergyMeV);
   }
@@ -301,10 +314,22 @@ double EnergyFromDeltaPercent(double referenceEnergyMeV,
   return std::sqrt(p * p + massMeV * massMeV) - massMeV;
 }
 
+double GammaFromEnergy(double energyMeV, double massAmu) {
+  const double massMeV = massAmu * kAmuMeV;
+  return (massMeV + energyMeV) / massMeV;
+}
+
+double SpeedFromEnergy(double energyMeV, double massAmu) {
+  const double massMeV = massAmu * kAmuMeV;
+  const double p = std::sqrt((2.0 * massMeV + energyMeV) * energyMeV);
+  return p / (massMeV + energyMeV) * kSpeedOfLightCmPerSecond;
+}
+
 TraceResult TraceRay(MDMFieldMapTrace& trace,
                      const Config& cfg,
                      const IonOpticsConfig& optics,
-                     const PhaseSpace& input) {
+                     const PhaseSpace& input,
+                     const LongitudinalReference* longitudinal = nullptr) {
   trace.SetInitialPosition(input.xMm / 10.0, input.yMm / 10.0);
   trace.SetScatteredAngle(cfg.mdmAngleDeg + input.thetaXMrad /
                                              kTraceMradPerDegree,
@@ -319,13 +344,22 @@ TraceResult TraceRay(MDMFieldMapTrace& trace,
   double angXDeg = 0.0;
   double angYDeg = 0.0;
   trace.GetPositionAngleFirstWire(xCm, yCm, angXDeg, angYDeg);
+  const double tofSeconds = trace.GetTimeOfFlightSeconds();
 
   TraceResult result;
+  result.tofSeconds = tofSeconds;
   result.stopped = !std::isfinite(xCm) || !std::isfinite(yCm) ||
                    !std::isfinite(angXDeg) || !std::isfinite(angYDeg) ||
+                   !std::isfinite(tofSeconds) ||
                    std::abs(xCm) > kStoppedCm || std::abs(yCm) > kStoppedCm;
+  double lMm = input.lMm;
+  if (longitudinal) {
+    lMm += -longitudinal->speedCmPerSecond *
+           (tofSeconds - longitudinal->tofSeconds) /
+           (longitudinal->gamma * longitudinal->gamma) * 10.0;
+  }
   result.output = {10.0 * xCm, angXDeg * kMradPerDegree, 10.0 * yCm,
-                   angYDeg * kMradPerDegree, input.deltaPercent};
+                   angYDeg * kMradPerDegree, lMm, input.deltaPercent};
   return result;
 }
 
@@ -335,6 +369,7 @@ std::array<double, kInputDim> InputDelta(const PhaseSpace& input,
           input.thetaXMrad - reference.thetaXMrad,
           input.yMm - reference.yMm,
           input.thetaYMrad - reference.thetaYMrad,
+          input.lMm - reference.lMm,
           input.deltaPercent - reference.deltaPercent};
 }
 
@@ -368,6 +403,17 @@ std::vector<Monomial> BuildMonomials(unsigned int order) {
     AddMonomialsOfDegree(degree, 0, term, terms);
   }
   return terms;
+}
+
+std::vector<std::size_t> ActiveFitTermIndices(
+    const std::vector<Monomial>& terms) {
+  std::vector<std::size_t> indices;
+  for (std::size_t i = 0; i < terms.size(); ++i) {
+    if (terms[i].powers[kLIndex] == 0) {
+      indices.push_back(i);
+    }
+  }
+  return indices;
 }
 
 double MonomialValue(const std::array<double, kInputDim>& inputDelta,
@@ -410,6 +456,17 @@ BasisVector BuildBasis(const std::array<double, kInputDim>& inputDelta,
   return basis;
 }
 
+BasisVector BuildBasis(const std::array<double, kInputDim>& inputDelta,
+                       const std::vector<Monomial>& terms,
+                       const std::vector<std::size_t>& termIndices) {
+  BasisVector basis;
+  basis.reserve(termIndices.size());
+  for (std::size_t term : termIndices) {
+    basis.push_back(MonomialValue(inputDelta, terms[term]));
+  }
+  return basis;
+}
+
 std::array<double, kOutputDim> EvaluateMap(
     const TransferMap& map,
     const std::array<double, kInputDim>& inputDelta) {
@@ -429,7 +486,8 @@ std::size_t GridRayCount(const FitGrid& grid) {
          grid.deltaPercent.values.size();
 }
 
-std::vector<PhaseSpace> BuildInputGrid(const FitGrid& grid) {
+std::vector<PhaseSpace> BuildInputGrid(const FitGrid& grid,
+                                       const PhaseSpace& reference) {
   std::vector<PhaseSpace> inputs;
   inputs.reserve(GridRayCount(grid));
   for (double xMm : grid.xMm.values) {
@@ -437,8 +495,8 @@ std::vector<PhaseSpace> BuildInputGrid(const FitGrid& grid) {
       for (double yMm : grid.yMm.values) {
         for (double thetaYMrad : grid.thetaYMrad.values) {
           for (double deltaPercent : grid.deltaPercent.values) {
-            inputs.push_back(
-                {xMm, thetaXMrad, yMm, thetaYMrad, deltaPercent});
+            inputs.push_back({xMm, thetaXMrad, yMm, thetaYMrad,
+                              reference.lMm, deltaPercent});
           }
         }
       }
@@ -466,6 +524,7 @@ std::vector<FitSample> TraceGrid(const std::vector<PhaseSpace>& inputs,
                                  const Config& cfg,
                                  const IonOpticsConfig& optics,
                                  const std::array<double, kOutputDim>& referenceOutput,
+                                 const LongitudinalReference& longitudinal,
                                  FitStats& stats) {
   stats.total = inputs.size();
   stats.threads = ResolveThreadCount(optics.requestedThreads, inputs.size());
@@ -475,7 +534,8 @@ std::vector<FitSample> TraceGrid(const std::vector<PhaseSpace>& inputs,
   for (unsigned int worker = 0; worker < stats.threads; ++worker) {
     auto trace = std::make_unique<MDMFieldMapTrace>();
     ConfigureTrace(*trace, cfg);
-    const TraceResult warmup = TraceRay(*trace, cfg, optics, optics.reference);
+    const TraceResult warmup =
+        TraceRay(*trace, cfg, optics, optics.reference, &longitudinal);
     if (warmup.stopped) {
       throw std::runtime_error("worker reference ray stopped before fit tracing");
     }
@@ -495,7 +555,7 @@ std::vector<FitSample> TraceGrid(const std::vector<PhaseSpace>& inputs,
     for (std::size_t i = begin; i < end; ++i) {
       TraceResult traceResult;
       try {
-        traceResult = TraceRay(trace, cfg, optics, inputs[i]);
+        traceResult = TraceRay(trace, cfg, optics, inputs[i], &longitudinal);
       } catch (const std::exception& error) {
         recordSkippedReason(error.what());
         slots[i].stopped = true;
@@ -564,16 +624,17 @@ std::vector<FitSample> TraceGrid(const std::vector<PhaseSpace>& inputs,
 
 std::vector<double> BuildColumnScales(const std::vector<FitSample>& samples,
                                       const std::vector<Monomial>& terms,
+                                      const std::vector<std::size_t>& activeTerms,
                                       unsigned int threads) {
   std::vector<std::vector<double>> localMax(
-      threads, std::vector<double>(terms.size(), 0.0));
+      threads, std::vector<double>(activeTerms.size(), 0.0));
 
   const auto runRange = [&](unsigned int worker, std::size_t begin,
                             std::size_t end) {
     for (std::size_t sampleIndex = begin; sampleIndex < end; ++sampleIndex) {
       const BasisVector basis =
-          BuildBasis(samples[sampleIndex].inputDelta, terms);
-      for (std::size_t term = 0; term < terms.size(); ++term) {
+          BuildBasis(samples[sampleIndex].inputDelta, terms, activeTerms);
+      for (std::size_t term = 0; term < activeTerms.size(); ++term) {
         localMax[worker][term] =
             std::max(localMax[worker][term], std::abs(basis[term]));
       }
@@ -595,8 +656,8 @@ std::vector<double> BuildColumnScales(const std::vector<FitSample>& samples,
     }
   }
 
-  std::vector<double> scales(terms.size(), 1.0);
-  for (std::size_t term = 0; term < terms.size(); ++term) {
+  std::vector<double> scales(activeTerms.size(), 1.0);
+  for (std::size_t term = 0; term < activeTerms.size(); ++term) {
     double maximum = 0.0;
     for (unsigned int worker = 0; worker < threads; ++worker) {
       maximum = std::max(maximum, localMax[worker][term]);
@@ -612,9 +673,10 @@ TransferMap SolveMapWithRootSvd(const std::vector<FitSample>& samples,
                                 unsigned int order,
                                 unsigned int threads) {
   const std::vector<Monomial> terms = BuildMonomials(order);
-  const std::size_t basisTerms = terms.size();
+  const std::vector<std::size_t> activeTerms = ActiveFitTermIndices(terms);
+  const std::size_t basisTerms = activeTerms.size();
   const std::vector<double> columnScale =
-      BuildColumnScales(samples, terms, threads);
+      BuildColumnScales(samples, terms, activeTerms, threads);
 
   std::vector<std::vector<double>> localNormal(
       threads, std::vector<double>(basisTerms * basisTerms, 0.0));
@@ -631,7 +693,8 @@ TransferMap SolveMapWithRootSvd(const std::vector<FitSample>& samples,
     std::vector<double>& normal = localNormal[worker];
     auto& rhs = localRhs[worker];
     for (std::size_t sampleIndex = begin; sampleIndex < end; ++sampleIndex) {
-      BasisVector basis = BuildBasis(samples[sampleIndex].inputDelta, terms);
+      BasisVector basis =
+          BuildBasis(samples[sampleIndex].inputDelta, terms, activeTerms);
       for (std::size_t term = 0; term < basisTerms; ++term) {
         basis[term] *= columnScale[term];
       }
@@ -688,7 +751,7 @@ TransferMap SolveMapWithRootSvd(const std::vector<FitSample>& samples,
   map.order = order;
   map.terms = terms;
   for (std::vector<double>& row : map.coeff) {
-    row.assign(basisTerms, 0.0);
+    row.assign(terms.size(), 0.0);
   }
 
   TDecompSVD svd(normal);
@@ -703,12 +766,16 @@ TransferMap SolveMapWithRootSvd(const std::vector<FitSample>& samples,
       throw std::runtime_error("ROOT TDecompSVD failed to solve fit matrix");
     }
     for (Int_t col = 0; col < static_cast<Int_t>(basisTerms); ++col) {
-      map.coeff[row][col] = coeff[col] * columnScale[col];
+      map.coeff[row][activeTerms[col]] = coeff[col] * columnScale[col];
     }
   }
-  const std::size_t deltaTerm = LinearTermIndex(map.terms, 4);
+  const std::size_t lTerm = LinearTermIndex(map.terms, kLIndex);
+  if (lTerm < map.terms.size()) {
+    map.coeff[kLIndex][lTerm] = 1.0;
+  }
+  const std::size_t deltaTerm = LinearTermIndex(map.terms, kDeltaIndex);
   if (deltaTerm < map.terms.size()) {
-    map.coeff[4][deltaTerm] = 1.0;
+    map.coeff[kDeltaIndex][deltaTerm] = 1.0;
   }
   return map;
 }
@@ -719,8 +786,10 @@ TransferMap FitTransferMap(const std::vector<FitSample>& samples,
   if (samples.empty()) {
     throw std::runtime_error("not enough accepted rays for ion-optics fit");
   }
-  stats.basisTerms = BuildMonomials(order).size();
-  if (stats.accepted < stats.basisTerms) {
+  const std::vector<Monomial> terms = BuildMonomials(order);
+  stats.basisTerms = terms.size();
+  stats.activeFitTerms = ActiveFitTermIndices(terms).size();
+  if (stats.accepted < stats.activeFitTerms) {
     throw std::runtime_error("not enough accepted rays for ion-optics fit");
   }
   const TransferMap map = SolveMapWithRootSvd(samples, order, stats.threads);
@@ -804,9 +873,9 @@ void WriteReport(std::ostream& out,
                  const FitStats& stats) {
   const std::array<const char*, kOutputDim> columns{
       "X1[mm]", "AngX1[mrad]", "Y1[mm]", "AngY1[mrad]",
-      "deltaP/P0[%]"};
-  const std::array<const char*, 4> residualLabels{"X1[mm]", "AngX1[mrad]",
-                                                  "Y1[mm]", "AngY1[mrad]"};
+      "L[mm]", "deltaP/P0[%]"};
+  const std::array<const char*, kPhysicsOutputDim> residualLabels{
+      "X1[mm]", "AngX1[mrad]", "Y1[mm]", "AngY1[mrad]", "L[mm]"};
 
   out << "# GenerateIonOptics fit-based ion-optics map\n";
   out << "# method: " << optics.method << "\n";
@@ -815,18 +884,23 @@ void WriteReport(std::ostream& out,
   out << "# maps: " << cfg.multipoleMap << ", " << cfg.dipoleEntranceMap
       << ", " << cfg.dipoleSectorMap << ", " << cfg.dipoleExitMap << "\n";
   out << "# vector columns: x[mm] thetaX[mrad] y[mm] thetaY[mrad] "
-         "deltaP/P0[%]\n";
+         "L[mm] deltaP/P0[%]\n";
   out << "# momentum coordinate: deltaP/P0 is percent; p = p0*(1 + "
          "deltaP/P0[%]/100)\n";
+  out << "# L convention: L = -v0_ref*(tof-tof_ref)/gamma0_ref^2; unit mm\n";
+  out << "# input L is a formal identity coordinate; no L scan grid is traced\n";
   out << "# reference: x=" << optics.reference.xMm
       << " mm thetaX=" << optics.reference.thetaXMrad
       << " mrad y=" << optics.reference.yMm
       << " mm thetaY=" << optics.reference.thetaYMrad
-      << " mrad energy=" << optics.referenceEnergyMeV << " MeV\n";
+      << " mrad L=" << optics.reference.lMm
+      << " mm energy=" << optics.referenceEnergyMeV << " MeV\n";
   out << "# reference output: X1=" << referenceOutput[0]
       << " mm AngX1=" << referenceOutput[1]
       << " mrad Y1=" << referenceOutput[2]
-      << " mm AngY1=" << referenceOutput[3] << " mrad\n";
+      << " mm AngY1=" << referenceOutput[3]
+      << " mrad L=" << referenceOutput[4]
+      << " mm deltaP/P0=" << referenceOutput[5] << " %\n";
   WriteAxis(out, "fitGrid x[mm]", optics.grid.xMm);
   WriteAxis(out, "fitGrid thetaX[mrad]", optics.grid.thetaXMrad);
   WriteAxis(out, "fitGrid y[mm]", optics.grid.yMm);
@@ -836,20 +910,23 @@ void WriteReport(std::ostream& out,
   out << "# threads: " << stats.threads << "\n";
   out << "# maxRays: " << optics.maxRays << "\n";
   out << "# basisTerms: " << stats.basisTerms << "\n";
+  out << "# activeFitTerms: " << stats.activeFitTerms << "\n";
   out << "# fit rays: total=" << stats.total << " accepted=" << stats.accepted
       << " stopped=" << stats.stopped << "\n";
   if (!stats.firstSkippedReason.empty()) {
     out << "# first skipped-ray reason: " << stats.firstSkippedReason << "\n";
   }
   out << "# residual convention: fitted prediction - traced field-map output\n";
-  for (std::size_t i = 0; i < 4; ++i) {
+  for (std::size_t i = 0; i < kPhysicsOutputDim; ++i) {
     out << "# residual " << residualLabels[i] << ": RMS="
         << stats.rmsResidual[i] << " MaxAbs=" << stats.maxAbsResidual[i]
         << "\n";
   }
   out << "# expansion: output-referenceOutput = sum C_m * monomial_m(q)\n";
   out << "# q = [x[mm], thetaX[mrad], y[mm], thetaY[mrad], "
-         "deltaP/P0[%]]\n";
+         "L[mm], deltaP/P0[%]]\n";
+  out << "# fitted terms have L exponent zero; all L-input terms are zero "
+         "except L->L=1\n";
   out << "# coefficients multiply monomials directly; no factorial factors "
          "are applied\n";
   out << "# human-readable first-order coefficients with abs(value)<1e-10 "
@@ -872,8 +949,8 @@ void WriteReport(std::ostream& out,
   out << "# det(first-order R) = " << FirstOrderDeterminant(map) << "\n";
 
   out << "# COSY-style map columns: X1[mm] AngX1[mrad] Y1[mm] "
-         "AngY1[mrad] deltaP/P0[%] exponents\n";
-  out << "# exponent order: x thetaX y thetaY deltaP/P0[%]\n";
+         "AngY1[mrad] L[mm] deltaP/P0[%] exponents\n";
+  out << "# exponent order: x thetaX y thetaY L deltaP/P0[%]\n";
   out << "#";
   for (const char* column : columns) {
     out << std::setw(18) << column;
@@ -903,12 +980,18 @@ int main(int argc, char* argv[]) {
   if (referenceResult.stopped) {
     throw std::runtime_error("reference ray stopped before the first wire");
   }
+  const LongitudinalReference longitudinal{
+      referenceResult.tofSeconds,
+      SpeedFromEnergy(optics.referenceEnergyMeV, cfg.massAmu),
+      GammaFromEnergy(optics.referenceEnergyMeV, cfg.massAmu)};
 
   FitStats stats;
-  const std::vector<PhaseSpace> inputs = BuildInputGrid(optics.grid);
+  const std::vector<PhaseSpace> inputs =
+      BuildInputGrid(optics.grid, optics.reference);
   std::cerr << "Tracing " << inputs.size() << " ion-optics rays\n";
   const std::vector<FitSample> samples =
-      TraceGrid(inputs, cfg, optics, referenceResult.output, stats);
+      TraceGrid(inputs, cfg, optics, referenceResult.output, longitudinal,
+                stats);
   std::cerr << "Fitting " << stats.accepted << " accepted rays with "
             << stats.threads << " thread(s)\n";
   if (!stats.firstSkippedReason.empty()) {

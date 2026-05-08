@@ -70,6 +70,16 @@ struct BeamlineGeometry {
   double finalDrift = 0.0;
 };
 
+struct PlaneCrossingResult {
+  State state;
+  double elapsedSeconds = 0.0;
+};
+
+struct IntegrationResult {
+  State state;
+  double elapsedSeconds = 0.0;
+};
+
 const BeamlineGeometry kMdmGeometry{
     63.5,
     {0.0, 0.0, 0.0, 2.27965, 2.2},
@@ -145,16 +155,18 @@ bool PlaneCrossed(double left, double right) {
   return (left <= 0.0 && right >= 0.0) || (left >= 0.0 && right <= 0.0);
 }
 
-State RefinePlaneCrossing(const State& leftInitial,
-                          const State& rightInitial,
-                          double stepDt,
-                          const FieldFunction& fieldFunction,
-                          const PlaneFunction& planeFunction,
-                          double kFactor) {
+PlaneCrossingResult RefinePlaneCrossing(const State& leftInitial,
+                                        const State& rightInitial,
+                                        double stepDt,
+                                        const FieldFunction& fieldFunction,
+                                        const PlaneFunction& planeFunction,
+                                        double kFactor) {
   State left = leftInitial;
   State right = rightInitial;
   double leftValue = planeFunction(left);
   double rightValue = planeFunction(right);
+  double leftDt = 0.0;
+  double rightDt = stepDt;
   double intervalDt = stepDt;
 
   for (std::size_t iteration = 0; iteration < kPlaneRefinementSteps;
@@ -163,47 +175,54 @@ State RefinePlaneCrossing(const State& leftInitial,
     const State mid = RK4Step(left, midDt, fieldFunction, kFactor);
     const double midValue = planeFunction(mid);
     if (std::abs(midValue) <= kPlaneToleranceCm) {
-      return mid;
+      return {mid, leftDt + midDt};
     }
     if (PlaneCrossed(leftValue, midValue)) {
       right = mid;
       rightValue = midValue;
+      rightDt = leftDt + midDt;
     } else {
       left = mid;
       leftValue = midValue;
+      leftDt += midDt;
     }
     intervalDt = midDt;
   }
 
-  return (std::abs(leftValue) < std::abs(rightValue)) ? left : right;
+  return (std::abs(leftValue) < std::abs(rightValue))
+             ? PlaneCrossingResult{left, leftDt}
+             : PlaneCrossingResult{right, rightDt};
 }
 
-State IntegrateToPlane(const State& initialState,
-                       const FieldFunction& fieldFunction,
-                       const PlaneFunction& planeFunction,
-                       double stepCm,
-                       double speedCmPerSecond,
-                       double kFactor,
-                       const std::string& label) {
+IntegrationResult IntegrateToPlane(const State& initialState,
+                                   const FieldFunction& fieldFunction,
+                                   const PlaneFunction& planeFunction,
+                                   double stepCm,
+                                   double speedCmPerSecond,
+                                   double kFactor,
+                                   const std::string& label) {
   State current = initialState;
   double currentPlaneValue = planeFunction(current);
   if (std::abs(currentPlaneValue) <= kPlaneToleranceCm) {
-    return current;
+    return {current, 0.0};
   }
 
   const double dt = stepCm / speedCmPerSecond;
+  double elapsed = 0.0;
   for (std::size_t step = 0; step < kMaxIntegrationSteps; ++step) {
     const State next = RK4Step(current, dt, fieldFunction, kFactor);
     const double nextPlaneValue = planeFunction(next);
     if (std::abs(nextPlaneValue) <= kPlaneToleranceCm) {
-      return next;
+      return {next, elapsed + dt};
     }
     if (PlaneCrossed(currentPlaneValue, nextPlaneValue)) {
-      return RefinePlaneCrossing(current, next, dt, fieldFunction,
-                                 planeFunction, kFactor);
+      const PlaneCrossingResult crossing = RefinePlaneCrossing(
+          current, next, dt, fieldFunction, planeFunction, kFactor);
+      return {crossing.state, elapsed + crossing.elapsedSeconds};
     }
     current = next;
     currentPlaneValue = nextPlaneValue;
+    elapsed += dt;
   }
 
   throw std::runtime_error("Failed to reach " + label + " exit plane");
@@ -342,6 +361,7 @@ void MDMFieldMapTrace::ValidateLoadedMaps() const {
 }
 
 void MDMFieldMapTrace::SendRay() {
+  timeOfFlightSeconds_ = 0.0;
   if (!mapsLoaded_) {
     throw std::runtime_error("LoadFieldMaps must be called before SendRay");
   }
@@ -386,10 +406,12 @@ void MDMFieldMapTrace::SendRay() {
     firstWireY_ = kStoppedPosition;
     firstWireAngXDeg_ = 0.0;
     firstWireAngYDeg_ = 0.0;
+    timeOfFlightSeconds_ = std::numeric_limits<double>::quiet_NaN();
   };
 
   const auto propagateDrift = [&](double distanceCm) {
     const double dt = distanceCm / std::abs(state.vz);
+    timeOfFlightSeconds_ += dt;
     state.x += dt * state.vx;
     state.y += dt * state.vy;
     state.z = 0.0;
@@ -436,6 +458,7 @@ void MDMFieldMapTrace::SendRay() {
     }
     const double multipoleStartZ = -0.5 * l - z11;
     const double startDt = (multipoleStartZ - localState.z) / localState.vz;
+    timeOfFlightSeconds_ += startDt;
     localState.x += startDt * localState.vx;
     localState.y += startDt * localState.vy;
     localState.z = multipoleStartZ;
@@ -447,9 +470,11 @@ void MDMFieldMapTrace::SendRay() {
       return sample.z - (b + 0.5 * l);
     };
 
-    localState = IntegrateToPlane(localState, fieldFunction, planeFunction,
-                                  kMultipoleStepCm, speedCmPerSecond, kFactor,
-                                  "multipole");
+    const IntegrationResult integrated = IntegrateToPlane(
+        localState, fieldFunction, planeFunction, kMultipoleStepCm,
+        speedCmPerSecond, kFactor, "multipole");
+    timeOfFlightSeconds_ += integrated.elapsedSeconds;
+    localState = integrated.state;
 
     state.x = localState.x;
     state.y = localState.y;
@@ -530,6 +555,7 @@ void MDMFieldMapTrace::SendRay() {
       throw std::runtime_error("Dipole entrance-frame vz is zero");
     }
     const double startDt = (z11 - entranceZB) / entranceVzB;
+    timeOfFlightSeconds_ += startDt;
     localState.x += startDt * localState.vx;
     localState.y += startDt * localState.vy;
     localState.z += startDt * localState.vz;
@@ -562,9 +588,11 @@ void MDMFieldMapTrace::SendRay() {
       return localToOutputD(sample).z;
     };
 
-    localState = IntegrateToPlane(localState, fieldFunction, planeFunction,
-                                  kDipoleStepCm, speedCmPerSecond, kFactor,
-                                  "dipole");
+    const IntegrationResult integrated =
+        IntegrateToPlane(localState, fieldFunction, planeFunction,
+                         kDipoleStepCm, speedCmPerSecond, kFactor, "dipole");
+    timeOfFlightSeconds_ += integrated.elapsedSeconds;
+    localState = integrated.state;
 
     state = localToOutputD(localState);
     state.z = 0.0;
@@ -593,4 +621,8 @@ void MDMFieldMapTrace::GetPositionAngleFirstWire(double& posX,
   posY = firstWireY_;
   angX = firstWireAngXDeg_;
   angY = firstWireAngYDeg_;
+}
+
+double MDMFieldMapTrace::GetTimeOfFlightSeconds() const {
+  return timeOfFlightSeconds_;
 }

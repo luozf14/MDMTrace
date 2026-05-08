@@ -41,6 +41,7 @@ class MDMFieldMapTrace {
                                  double& posY,
                                  double& angX,
                                  double& angY) const;
+  double GetTimeOfFlightSeconds() const;
 
  private:
   void ValidateLoadedMaps() const;
@@ -67,6 +68,7 @@ class MDMFieldMapTrace {
   double firstWireY_ = 0.0;
   double firstWireAngXDeg_ = 0.0;
   double firstWireAngYDeg_ = 0.0;
+  double timeOfFlightSeconds_ = 0.0;
 };
 
 #endif
