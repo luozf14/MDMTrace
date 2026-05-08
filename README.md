@@ -1,609 +1,67 @@
 # MdmTrace
 
-MdmTrace is a C++ interface around the MIT RAYTRACE code plus MDM-specific tools for field-map generation and validation. The active optics deck is [dat/rayin.dat](dat/rayin.dat), and the original RAYTRACE manuals are shipped in the repository root as [raytrace1.pdf](raytrace1.pdf), [raytrace2.pdf](raytrace2.pdf), and [raytrace3.pdf](raytrace3.pdf).
+MdmTrace is a C++ interface around the MIT RAYTRACE code plus MDM-specific tools for generating magnetic field maps, validating them against the legacy transport, and fitting ion-optical transfer maps.
 
-This repository currently models one specific MDM configuration:
+The normal goal of this project is to export field maps that can be used in a Geant4 model of the MDM spectrometer. The active RAYTRACE deck is `dat/rayin.dat`.
 
-- entrance multipole on,
-- dipole on,
-- second multipole present in the beamline geometry but field-off.
-
-## Overview
-
-The project has five main user-facing executables:
-
-- `MdmTraceExample`: runs the original Fortran RAYTRACE transport through the deck.
-- `MdmFieldMapGenerator`: samples the RAYTRACE magnet field formulas and writes `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`.
-- `MdmFieldMapTraceExample`: transports ions through the generated field maps and compares against the original tracer output format.
-- `Compare`: runs both transport paths for the angle/energy-grid config and writes ROOT comparison plots.
-- `GenerateIonOptics`: fits ion-optical maps up to fifth order from many field-map-traced rays.
-- `FindMdmField`: tunes the scalar MDM dipole field for a requested ion using legacy RAYTRACE.
-
-At the library level, the repo exposes three main C++ interfaces:
-
-- `MdmTrace`: thin wrapper around the original Fortran tracer and common blocks.
-- `MdmFieldMap`: standalone binary field-map loader, saver, and trilinear interpolator.
-- `MdmFieldMapTrace`: Fortran-free field-map-based transport validator for the current MDM beamline.
-
-## Repository Structure
-
-- `src/`: Fortran RAYTRACE source and the C++ implementations.
-- `include/`: public C++ headers.
-- `config/`: two self-contained JSON configs, `MDM.json` for normal use and `MDMScan.json` for scan/comparison runs.
-- `dat/`: the active RAYTRACE optics deck, `rayin.dat`.
-- `MdmTraceExample.cpp`: example executable for the original Fortran transport.
-- `MdmFieldMapTraceExample.cpp`: example executable for the field-map validator.
-- `Compare.cpp`: ROOT comparison executable for legacy-vs-field-map validation.
-- `GenerateIonOptics.cpp`: field-map-based ion-optics fitter up to fifth order.
-- `FindMdmField.cpp`: legacy-RAYTRACE field-setting tuner.
-- `raytrace1.pdf`, `raytrace2.pdf`, `raytrace3.pdf`: original RAYTRACE manuals.
+Current model:
+- entrance multipole on
+- dipole on
+- second multipole ignored as a field element
+- field-map transport uses generated maps plus hard-coded zero-field drifts and apertures from the deck
 
 ## Build
-
-Use the standard CMake flow:
 
 ```bash
 cmake -S . -B build
 cmake --build build -j4
 ```
 
-The build produces:
+ROOT is required for `Compare` and `GenerateIonOptics`. The field-map loader and field-map transport code do not depend on ROOT or Fortran.
 
-- `build/libMdmFieldMap.*`
-- `build/libMdmFieldMapTransport.*`
-- `build/MdmTraceExample`
-- `build/MdmFieldMapGenerator`
-- `build/MdmFieldMapTraceExample`
-- `build/Compare`
-- `build/GenerateIonOptics`
-- `build/FindMdmField`
+## Quickstart
 
-During configuration, CMake copies `dat/rayin.dat` into `build/`. Running the executables from `build/` is the intended default workflow.
-
-## Usage
-
-### `MdmTraceExample`
-
-Purpose: run the original Fortran RAYTRACE transport with the current MDM deck.
-
-Syntax:
-
-```bash
-./MdmTraceExample <config-file>
-```
-
-Example:
-
-```bash
-cd build
-./MdmTraceExample ../config/MDM.json
-```
-
-Input:
-
-- shared transport JSON keys described below.
-
-Output:
-
-- one final line per requested input ray on stdout in the form
-  `Scattered Angle X: ... Scattered Angle Y: ... Scattered Energy: ... X1: ... Y1: ... AngX1: ... AngY1: ...`
-
-Notes:
-
-- This executable uses the original Fortran tracer directly.
-- `scatteredAngles` remains supported as a legacy horizontal-only scan with vertical angle fixed to `0`.
-- Use `scatteredAnglePairs` or `scatteredAngleGrid` to scan nonzero vertical input angles.
-- Use `scatteredEnergyGrid` to scan kinetic energy in MeV.
-
-### `MdmFieldMapGenerator`
-
-Purpose: sample the entrance multipole and dipole fields from the RAYTRACE formulas and write binary field maps.
-
-Syntax:
-
-```bash
-./MdmFieldMapGenerator <config-file>
-```
-
-Example:
-
-```bash
-cd build
-./MdmFieldMapGenerator ../config/MDM.json
-```
-
-Input:
-
-- generator JSON keys described below.
-
-Output:
-
-- map grid summary on stdout,
-- `Multipole.bin`,
-- `DipoleEntrance.bin`,
-- `DipoleSector.bin`,
-- `DipoleExit.bin`
-
-Notes:
-
-- The generator ignores the second multipole because its field is off in the current deck.
-- The generator stores direct RAYTRACE field samples at grid nodes. It does not run interpolation-based refinement.
-- Grid spacing is controlled by `fieldMapSpacingMm` in the generator JSON. The generator no longer uses `LF1/LU1/LF2/DG` as map spacing.
-- Relative output paths are resolved against `outputDirectory`.
-
-### `MdmFieldMapTraceExample`
-
-Purpose: transport ions through `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` with the current MDM beamline geometry compiled into C++, then print the same final result format as `MdmTraceExample`.
-
-Syntax:
-
-```bash
-./MdmFieldMapTraceExample <config-file>
-```
-
-Example:
-
-```bash
-cd build
-./MdmFieldMapTraceExample ../config/MDM.json
-```
-
-Input:
-
-- shared transport JSON keys,
-- optional map-path overrides
-
-Output:
-
-- one final line per requested input ray in the same form used by `MdmTraceExample`
-
-Notes:
-
-- If no map paths are provided, the executable looks for `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin` in the current working directory.
-- The validator checks that the requested magnet settings match the metadata stored in the loaded maps. It rejects mismatches instead of silently rescaling the fields.
-- This executable does not link or call the Fortran RAYTRACE code. The drift lengths, collimators, and magnet transforms are C++ constants extracted from the active `rayin.dat` setup.
-
-### `Compare`
-
-Purpose: run legacy RAYTRACE transport and field-map transport for `config/MDMScan.json`, then write four ROOT comparison canvases.
-
-Syntax:
-
-```bash
-./Compare [config-file]
-```
-
-Example:
-
-```bash
-cd build
-./Compare
-```
-
-Output:
-
-- `Compare.root`
-- four canvases: `c_X1`, `c_Y1`, `c_AngX1`, and `c_AngY1`
-- each canvas has a top `Legacy` vs `FieldMap` scatter plot with equal axis ranges and a red `y=x` diagonal
-- each canvas has a bottom residual plot with `Legacy - FieldMap` on the y-axis
-- stdout summary of RMS residual and max absolute residual
-
-Notes:
-
-- The default config is `${PROJECT_SOURCE_DIR}/config/MDMScan.json`.
-- The config can use the same ray-scan keys as the examples: `scatteredAngles`, `scatteredAnglePairs`, `scatteredAngleGrid`, and `scatteredEnergyGrid`.
-- `compareProcesses` optionally sets the number of worker processes. Missing or `0` uses hardware concurrency.
-- Residuals use the `Legacy - FieldMap` convention.
-
-### `GenerateIonOptics`
-
-Purpose: trace an input grid through the generated field maps and fit a 6D LISE-style ion-optical map up to fifth order.
-
-Syntax:
-
-```bash
-./GenerateIonOptics [config-file]
-```
-
-Example:
-
-```bash
-cd build
-./GenerateIonOptics
-```
-
-Output:
-
-- `IonOpticsMatrix.txt` by default
-- the same report on stdout
-- reference output, fit-grid summary, solver, thread count, accepted/stopped ray counts, residual summary, a human-readable first-order matrix with determinant, and a COSY-style coefficient map
-
-Notes:
-
-- The default config is `${PROJECT_SOURCE_DIR}/config/MDM.json`.
-- The vector is `[x mm, thetaX mrad, y mm, thetaY mrad, L mm, deltaP/P0 %]`, where `deltaP/P0 % = 100 * (p - p0) / p0`.
-- `L` is a LISE-style longitudinal coordinate from time of flight: `L = -v0_ref * (tof - tof_ref) / gamma0_ref^2`.
-- Input `L` is formal only; the static magnetic system gives `L_out = L_in + path/time dependence`, so `L -> L` is fixed to `1` while the rest of the `L` row is fitted.
-- The default fit order is `2`. Higher orders are selected with `ionOptics.order`.
-- The fit uses ROOT `TDecompSVD` on the normal matrix and parallel field-map tracing.
-- Aperture-stopped rays are skipped in the fit and counted in the report.
-
-### `FindMdmField`
-
-Purpose: compute an initial MDM dipole field from ion rigidity, then tune the dipole field so the first-wire output ray is as close as possible to `X1=Y1=AngX1=AngY1=0`.
-
-Syntax:
-
-```bash
-./FindMdmField [config-file]
-```
-
-Example:
+Run the normal field-map and validation workflow from `build/`:
 
 ```bash
 cd build
 ./FindMdmField ../config/MDMFindField.json
-```
-
-Output:
-
-- initial rigidity field in Gauss
-- tuned `mdmDipoleField`
-- equivalent `mdmDipoleProbe = field / 1.034`
-- equivalent `mdmMultipoleProbe = mdmDipoleProbe * 0.71`
-- final `X1`, `Y1`, `AngX1`, `AngY1`, and weighted residual
-
-Notes:
-
-- This executable uses legacy RAYTRACE directly, not field maps, because the generated field maps encode one fixed magnet setting.
-- The tuned scalar is `mdmDipoleField` in Gauss. The entrance multipole follows the existing fixed relation through `MdmTrace::SetMdmDipoleField`.
-- One scalar field may not make all four output quantities exactly zero, so the result is the best weighted compromise.
-
-## JSON Configuration
-
-The repository uses two JSON files:
-
-- `config/MDM.json`: normal setup used by the field-map generator, single-ray examples, field-map trace example, and ion-optics fit.
-- `config/MDMScan.json`: larger angle/energy scan used by `Compare` and optional scan runs of the two trace examples.
-
-There is no include or inheritance mechanism. Each file is self-contained, and executables ignore top-level keys they do not use.
-
-### Shared Transport Keys
-
-These keys are used by `MdmTraceExample` and `MdmFieldMapTraceExample`.
-
-| Key | Meaning |
-| --- | --- |
-| `usingProbe` | If `true`, use `mdmDipoleProbe` and `mdmMultipoleProbe`. If `false`, derive equivalent probe settings from `mdmDipoleField`. |
-| `mdmAngle` | MDM spectrometer angle in degrees. |
-| `mdmDipoleField` | Legacy dipole field setting used by the existing code path. Ignored when `usingProbe=true`. |
-| `mdmDipoleProbe` | Dipole hall-probe value. |
-| `mdmMultipoleProbe` | Entrance multipole hall-probe value. |
-| `scatteredMass` | Ion mass in AMU. |
-| `scatteredCharge` | Ion charge state in units of `e`. |
-| `scatteredEnergy` | Ion kinetic energy in MeV. Used as the single fallback energy when `scatteredEnergyGrid` is absent. |
-| `scatteredEnergyGrid` | Optional kinetic-energy grid object with `eMin`, `eMax`, and `eStep`, all in MeV. |
-| `scatteredAngles` | Legacy list of horizontal scattering angles in degrees. Each entry generates `(xDeg, yDeg) = (angle, 0)`. |
-| `scatteredAnglePairs` | Explicit 2D input rays as `[[xDeg, yDeg], ...]`. |
-| `scatteredAngleGrid` | 2D angular grid object with `xMin`, `xMax`, `xStep`, `yMin`, `yMax`, and `yStep`, all in degrees. |
-
-If multiple angle-scan keys are present, angle rays are concatenated in this order: `scatteredAngles`, `scatteredAnglePairs`, then `scatteredAngleGrid`. Grid scan ordering is x-major: for each x angle, all y angles are scanned. If `scatteredEnergyGrid` is present, each angle ray is crossed with all energy values in ascending energy order. Grid steps must be positive, ranges must satisfy `max >= min`, and generated grids always include both endpoints.
-
-### Generator Keys
-
-These keys are used by `MdmFieldMapGenerator`.
-
-| Key | Meaning |
-| --- | --- |
-| `mdmDipoleProbe` | Dipole hall-probe setting used to build the maps. |
-| `mdmMultipoleProbe` | Entrance multipole hall-probe setting used to build the maps. |
-| `fieldMapSpacingMm` | Required field-map spacing in millimeters, used for every map axis. If a physical range is not an exact multiple of the spacing, the stored box is padded on the upper side to keep the requested spacing while covering the full field region. |
-| `outputDirectory` | Base directory for relative output file names. |
-| `multipoleOutput` | Output filename or path for the entrance multipole map. |
-| `dipoleEntranceOutput` | Output filename or path for the entrance-fringe dipole map. |
-| `dipoleSectorOutput` | Output filename or path for the sector dipole map. |
-| `dipoleExitOutput` | Output filename or path for the exit-fringe dipole map. |
-| `dipoleOutput` | Legacy compatibility key. If used, generator writes `...Entrance`, `...Sector`, and `...Exit` sibling files. |
-
-### Validator-Only Keys
-
-These keys are optional and are used only by `MdmFieldMapTraceExample`.
-
-| Key | Meaning |
-| --- | --- |
-| `multipoleMapPath` | Path to the multipole map. Defaults to `Multipole.bin` in the current working directory. |
-| `dipoleEntranceMapPath` | Path to entrance-fringe dipole map. Defaults to `DipoleEntrance.bin`. |
-| `dipoleSectorMapPath` | Path to sector dipole map. Defaults to `DipoleSector.bin`. |
-| `dipoleExitMapPath` | Path to exit-fringe dipole map. Defaults to `DipoleExit.bin`. |
-
-### Ion-Optics Fit Keys
-
-These keys are optional and are used by `GenerateIonOptics` inside the `ionOptics` object.
-
-| Key | Meaning |
-| --- | --- |
-| `method` | Must be `fit`. Finite-difference ion optics is no longer used. |
-| `order` | Polynomial order from `1` through `5`. Defaults to `2`. |
-| `threads` | Number of worker threads for field-map tracing. `0` or missing uses hardware concurrency; `1` forces serial tracing. |
-| `maxRays` | Safety limit for the generated fit grid. Defaults to `1000000`; the program errors clearly if the grid is larger. |
-| `reference` | Reference ray object with `xMm`, `thetaXMrad`, `yMm`, `thetaYMrad`, optional `lMm`, and `energyMeV`. |
-| `fitGrid` | Input grid object used for the least-squares matrix fit. |
-| `outputPath` | Text output path. Defaults to `IonOpticsMatrix.txt`. |
-
-The `fitGrid` object uses these keys:
-
-| Key | Meaning |
-| --- | --- |
-| `xMinMm`, `xMaxMm`, `xStepMm` | Horizontal input-position grid in mm. |
-| `thetaXMinMrad`, `thetaXMaxMrad`, `thetaXStepMrad` | Horizontal input-angle grid in mrad. |
-| `yMinMm`, `yMaxMm`, `yStepMm` | Vertical input-position grid in mm. |
-| `thetaYMinMrad`, `thetaYMaxMrad`, `thetaYStepMrad` | Vertical input-angle grid in mrad. |
-| `deltaMin`, `deltaMax`, `deltaStep` | Momentum-offset grid in percent, `deltaP/P0 % = 100 * (p - p0) / p0`. |
-
-For each accepted ray, the fit expands around the reference ray:
-
-```text
-q = input - referenceInput
-output - referenceOutput = sum C_m * monomial_m(q)
-```
-
-Terms are generated by degree from 1 up to `order`. The printed 6D map has 6, 27, 83, 209, and 461 terms for orders 1 through 5. Only terms with zero input-`L` power are fitted from traced rays, so the active fitted basis remains 5, 20, 55, 125, and 251 terms. Coefficients multiply monomials directly; no factorial factors such as `1/2` or `1/6` are applied.
-
-The output first prints a human-readable first-order matrix and `det(first-order R)`, then a COSY Infinity printed-map-style coefficient block. Each COSY-style row contains the six output-coordinate coefficients followed by an exponent code for the input monomial. For this project the exponent code has six digits in the order `x thetaX y thetaY L deltaP/P0[%]`; for example, `201000` means `x^2*y`. Human-readable first-order coefficients with absolute value below `1e-10` are printed as zero, while the COSY-style rows keep the fitted values.
-
-High-order full-grid fits can be much slower and produce large text output. Use `maxRays` as a practical safety limit when increasing the order or widening the grid.
-
-The momentum coordinate is stored and fitted in percent. Internally, the tracer converts each fitted ray to kinetic energy using `p = p0 * (1 + deltaP/P0[%] / 100)`.
-
-The `L -> L` matrix element is fixed to `1`. The last matrix row is fixed to `[0, 0, 0, 0, 0, 1]` because the field-map transport has no energy-loss model.
-
-### Field-Finder Keys
-
-`FindMdmField` uses the top-level `mdmAngle`, `scatteredMass`, `scatteredCharge`, and `scatteredEnergy` keys plus a `fieldFinder` object.
-
-| Key | Meaning |
-| --- | --- |
-| `inputAngleXDeg`, `inputAngleYDeg` | Input ray angles in degrees. |
-| `positionScaleCm` | Position scale used in the weighted residual. |
-| `angleScaleDeg` | Angle scale used in the weighted residual. |
-| `searchHalfWidthFraction` | Initial search half-width around the rigidity estimate. |
-| `coarseSamples` | Number of fields in each coarse scan. |
-| `fieldToleranceGauss` | Golden-section stopping tolerance. |
-| `maxIterations` | Maximum golden-section iterations. |
-
-The initial estimate is:
-
-```text
-m = scatteredMass * 931.48 MeV
-p = sqrt((2*m + T) * T)
-BRho[kG cm] = p / (0.299792458 * charge)
-mdmDipoleField[G] = 1000 * BRho / 160
-```
-
-The minimized objective is:
-
-```text
-chi2 = (X1/positionScaleCm)^2
-     + (Y1/positionScaleCm)^2
-     + (AngX1/angleScaleDeg)^2
-     + (AngY1/angleScaleDeg)^2
-```
-
-## Physics And Modeling Conventions
-
-### Beamline Sequence
-
-For the current deck, the transport sequence is:
-
-1. drift
-2. entrance collimator
-3. drift
-4. first multipole
-5. dipole
-6. second multipole with field off
-7. exit collimator
-8. final drift
-
-The field-map validator uses the same sequence. It transports through the two active magnetic elements with the saved maps and handles the zero-field sections separately in C++. Its geometry constants are copied from the active `rayin.dat` setup, but it does not read `rayin.dat` or call Fortran at runtime.
-
-### Magnet Setting Conventions
-
-The implemented hall-probe conversion rules are:
-
-- dipole central field in Tesla:
-
-```text
-B_dipole = mdmDipoleProbe * 1.034 * 1e-4
-```
-
-- if `usingProbe=false`, the code derives equivalent probe settings as:
-
-```text
-dipoleProbe = mdmDipoleField / 1.034
-multipoleProbe = dipoleProbe * 0.71
-```
-
-- the entrance multipole field strengths are derived from `mdmMultipoleProbe` using the embedded Jeffs calibration ratios already used by `MdmTrace.cpp`
-
-### Transport Model
-
-`MdmTrace` and `MdmFieldMapTrace` both follow the magnetic RAYTRACE particle model:
-
-- particle state is advanced in `(x, y, z, vx, vy, vz)`
-- only magnetic fields are used in the current MDM workflow
-- ion speed is computed from the same relativistic expression used in the Fortran code:
-
-```text
-m = A * 931.48 MeV
-v = sqrt((2m + E)E) / (m + E) * c
-```
-
-- the field-map validator uses the same four-stage Runge-Kutta structure as RAYTRACE for the magnetic elements
-- drifts are transported as straight-line segments
-- collimators are enforced from C++ constants copied from `rayin.dat`
-
-### Coordinate Conventions
-
-#### Multipole Map
-
-- origin at magnet center
-- `+z` along the beam direction
-- `x` and `y` are transverse
-- beam travels from `-z` to `+z`
-
-This follows the centered straight-through convention used for the generated entrance multipole map.
-
-#### Dipole Map
-
-- origin at the dipole entrance center
-- `+x` points left in the top view
-- `+y` points upward
-- `+z` points along the incoming beam
-- the reference bend is toward `-x`
-
-This dipole map frame was chosen for Geant4 convenience and is not the same presentation used in the original RAYTRACE 2 manual.
-
-### Second Multipole
-
-The second multipole remains in the beamline geometry, but its field coefficients are zero in the current deck. The generator does not write a second multipole map, and the field-map validator treats that section as zero-field transmission.
-
-## Binary Field Map Format
-
-All generated maps (`Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, `DipoleExit.bin`) use the same container format:
-
-1. ASCII header with one `key=value` entry per line
-2. header terminator line:
-
-```text
-END_HEADER
-```
-
-3. binary payload in little-endian `float32`
-
-The payload order is:
-
-1. all `Bx`
-2. all `By`
-3. all `Bz`
-
-The payload layout is x-fastest, component-major. For grid indices `(ix, iy, iz)`:
-
-```text
-linear_index = ix + nx * (iy + ny * iz)
-```
-
-The physical coordinate for a grid node is:
-
-```text
-x = origin_x + ix * dx
-y = origin_y + iy * dy
-z = origin_z + iz * dz
-```
-
-where `origin_cm = origin_x origin_y origin_z` and `spacing_cm = dx dy dz`.
-
-### Using `MdmFieldMap` Elsewhere
-
-`include/MdmFieldMap.h` and `src/MdmFieldMap.cpp` are intentionally standalone. They can be copied into another project without RAYTRACE, ROOT, JSON, or the field-map validator.
-
-Minimal use:
-
-```cpp
-MdmFieldMap map("Multipole.bin");
-Vec3 b = map.FieldTesla(x_cm, y_cm, z_cm);
-```
-
-The input position must already be in the map's local magnet coordinate system and in centimeters. The returned field is in Tesla and in the stored local field frame. External code should handle any global-to-local coordinate transform before calling `FieldTesla`, and any local-to-global field rotation after the call. `FieldTesla` returns zero outside the stored box or outside the multipole aperture mask.
-
-The typed header is available as `map.h`; unrecognized header fields are kept in `map.h.extra`.
-
-### Common Header Keys
-
-These keys are written for both map types:
-
-| Key | Meaning |
-| --- | --- |
-| `version` | File format version. Current value is `1`. |
-| `magnet` | Magnet name, currently `Multipole`, `DipoleEntrance`, `DipoleSector`, or `DipoleExit`. |
-| `units_length` | Length unit. Current value is `cm`. |
-| `units_field` | Field unit. Current value is `Tesla`. |
-| `nx`, `ny`, `nz` | Grid node counts along each axis. |
-| `origin_cm` | Grid origin in centimeters. |
-| `spacing_cm` | Grid spacing in centimeters. |
-| `axis_definition` | Human-readable axis convention for the map. |
-| `coordinate_system` | Optional short coordinate-system label for external consumers. |
-| `payload_layout` | Current value is `component_major_x_fastest_float32`. |
-| `sampling_method` | Current value is `direct_raytrace`. |
-| `masked_zero_region` | `true` if regions outside the physical magnet are stored in the grid but evaluate to zero. |
-| `mdm_dipole_probe` | Dipole hall-probe setting used to generate the map. |
-| `mdm_multipole_probe` | Entrance multipole hall-probe setting used to generate the map. |
-| `requested_spacing_mm` | Requested generator spacing from `fieldMapSpacingMm`. |
-
-### Multipole-Specific Header Keys
-
-| Key | Meaning |
-| --- | --- |
-| `multipole_aperture_radius_cm` | Circular aperture radius used to mask the map outside the active bore. |
-| `multipole_transition_planes_cm` | Transition plane locations used during map generation and validation. |
-
-### Dipole-Specific Header Keys (Split Maps)
-
-| Key | Meaning |
-| --- | --- |
-| `dipole_region` | One of `entrance_fringe`, `sector`, `exit_fringe`. |
-| `field_component_frame` | Current value is `dipole_local_cartesian`. |
-| `raytrace_sector_frame` | Present on `DipoleSector` maps. Current value is `c_axis`, meaning sector samples were evaluated in the RAYTRACE C-frame before rotating fields into the stored local frame. |
-| `dipole_gap_cm` | Dipole gap used for the vertical acceptance mask. |
-| `dipole_reference_radius_cm` | Dipole reference bend radius `RB` used for the sector coordinate transform. |
-| `dipole_sector_angle_deg` | Central bend angle in degrees. |
-| `dipole_alpha_deg` | Entrance face angle. |
-| `dipole_beta_deg` | Exit face angle. |
-| `dipole_z11_cm` | Entrance fringe extent parameter from the deck. |
-| `dipole_z12_cm` | Entrance fringe extent parameter from the deck. |
-| `dipole_z21_cm` | Exit fringe extent parameter from the deck. |
-| `dipole_z22_cm` | Exit fringe extent parameter from the deck. |
-| `dipole_strip_half_width_cm` | Half-width of the stored radial strip around the reference bend radius. |
-
-### `masked_zero_region`
-
-The stored arrays are rectangular, but not every grid point is physically inside a magnet. Points outside the valid region are treated as zero field:
-
-- multipole: outside the circular aperture
-- dipole split maps: each file stores only one physical region; no extra curved mask is applied inside that region grid
-
-This allows downstream code to keep a regular grid while still honoring the physical magnet shape.
-
-## Validation Workflow
-
-The intended workflow is:
-
-```bash
-cmake -S . -B build
-cmake --build build -j4
-cd build
 ./MdmFieldMapGenerator ../config/MDM.json
 ./MdmTraceExample ../config/MDM.json
 ./MdmFieldMapTraceExample ../config/MDM.json
+./Compare
 ```
 
-For a wider angular scan that includes rays off the median plane:
+Use `FindMdmField` first when you need a dipole setting for a new ion. Put the tuned field or equivalent probe values into `config/MDM.json`, then generate maps and validate transport.
 
-```bash
-./MdmTraceExample ../config/MDMScan.json
-./MdmFieldMapTraceExample ../config/MDMScan.json
-```
+The generator writes:
+- `Multipole.bin`
+- `DipoleEntrance.bin`
+- `DipoleSector.bin`
+- `DipoleExit.bin`
 
-Compare the final values:
+The trace examples print the same final-result line format so the legacy RAYTRACE result and field-map result can be compared directly.
 
-- `X1`
-- `Y1`
-- `AngX1`
-- `AngY1`
+## Config Files
 
-`MdmFieldMapTraceExample` is designed to make that comparison straightforward by printing the same final result format as `MdmTraceExample`.
+There are three self-contained JSON configs:
 
-## Limitations
+- `config/MDM.json`: normal setup. Used by `MdmFieldMapGenerator`, `MdmTraceExample`, `MdmFieldMapTraceExample`, and `GenerateIonOptics`.
+- `config/MDMScan.json`: larger angle/energy scan. Used by `Compare` by default and by optional scan runs of the two trace examples.
+- `config/MDMFindField.json`: field-tuning setup for `FindMdmField`.
 
-- This is not a generic RAYTRACE deck runner. The current field-map workflow is specific to the MDM deck shipped in this repository.
-- The field maps contain magnetic fields only. Drifts, collimators, and the inactive second multipole are handled separately by the validator or downstream transport code.
-- The second multipole is currently treated as zero-field.
+Important conventions:
+- JSON keys keep the original `mdm...` names, for example `mdmDipoleProbe` and `mdmDipoleField`.
+- If `usingProbe` is true, tools use `mdmDipoleProbe` and `mdmMultipoleProbe`.
+- If `usingProbe` is false, tools use `mdmDipoleField` and derive the equivalent probes with the project calibration rules.
+- Relative map paths are resolved from the current working directory, so the usual workflow is to run tools from `build/`.
+
+## Reference
+
+Detailed documentation is split into:
+
+- [Executables](reference/executables.md): command-line usage and outputs for the generator, trace examples, comparison tool, ion-optics fitter, and field tuner.
+- [Configuration](reference/configuration.md): JSON keys, scan-grid rules, map paths, ion-optics settings, and field-finder settings.
+- [Physics Conventions](reference/physics.md): beamline sequence, magnet-setting convention, coordinate systems, transport model, second-multipole behavior, and `L` definition.
+- [Field Map Format](reference/field-map-format.md): binary file layout, header keys, `MdmFieldMap` usage notes, split-dipole metadata, and masked-zero regions.
+- [Validation Workflow](reference/validation.md): legacy-vs-field-map comparison steps, ROOT comparison plots, map compatibility checks, and known limitations.
