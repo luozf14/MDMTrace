@@ -35,9 +35,27 @@ Common keys:
 | `mdmDipoleField` | Dipole field in Gauss, used when `usingProbe=false`. |
 | `mdmDipoleProbe` | Dipole hall-probe value. |
 | `mdmMultipoleProbe` | Entrance multipole hall-probe value. |
-| `scatteredMass` | Ion mass number. |
-| `scatteredCharge` | Ion charge state. |
+| `scatteredIon` | Isotope and transported charge state. |
+| `massTablePath` | Optional AME2020 mass table path. Default is `dat/mass_1.mas20.txt` in the source tree. |
 | `scatteredEnergy` | Kinetic energy in MeV. |
+
+Ion definition:
+
+```json
+"scatteredIon": {
+  "massNumber": 12,
+  "atomicNumber": 6,
+  "chargeState": 5
+}
+```
+
+The transported rest mass is:
+
+```text
+ionMassMeV = neutralAtomicMassU * 931.49410242 - chargeState * 0.510998950
+```
+
+The neutral atomic mass comes from AME2020. Electron binding energies are ignored.
 
 Probe convention:
 
@@ -210,8 +228,8 @@ The `fieldFinder` block is used by `FindMdmField`.
 Rigidity estimate:
 
 ```text
-m = scatteredMass * 931.48 MeV
+m = ionMassMeV
 p = sqrt((2*m + T) * T)
-BRho[kG cm] = p / (0.299792458 * charge)
+BRho[kG cm] = p / (0.299792458 * chargeState)
 mdmDipoleField[G] = 1000 * BRho / 160
 ```

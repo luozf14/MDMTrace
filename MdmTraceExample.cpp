@@ -1,4 +1,5 @@
 #include "MdmRayScan.h"
+#include "MdmIonConfig.h"
 #include "MdmTrace.h"
 #include "json.h"
 
@@ -35,6 +36,7 @@ int main(int argc, char* argv[]) {
   configStream >> config;
   const bool usingProbe =
       config.isMember("usingProbe") && config["usingProbe"].asBool();
+  const MdmIon ion = mdm::ParseScatteredIon(config);
   const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(config);
 
   MdmTrace trace;
@@ -47,8 +49,7 @@ int main(int argc, char* argv[]) {
     trace.SetMdmDipoleField(GetDouble(config, "mdmDipoleField"));
   }
 
-  trace.SetScatteredMass(GetDouble(config, "scatteredMass"));
-  trace.SetScatteredCharge(GetDouble(config, "scatteredCharge"));
+  trace.SetScatteredIon(ion);
 
   for (const mdm::RayInput& ray : rays) {
     trace.SetScatteredAngle(ray.xDeg, ray.yDeg);

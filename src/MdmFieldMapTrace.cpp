@@ -287,17 +287,10 @@ void MdmFieldMapTrace::SetMdmDipoleField(double dipoleField) {
   }
 }
 
-void MdmFieldMapTrace::SetScatteredMass(double massAmu) {
-  scatteredMassAmu_ = massAmu;
+void MdmFieldMapTrace::SetScatteredIon(const MdmIon& ion) {
+  ionMassMeV_ = ion.ionMassMeV;
+  ionChargeState_ = ion.chargeState;
 }
-
-double MdmFieldMapTrace::GetScatteredMass() const { return scatteredMassAmu_; }
-
-void MdmFieldMapTrace::SetScatteredCharge(double charge) {
-  scatteredCharge_ = charge;
-}
-
-double MdmFieldMapTrace::GetScatteredCharge() const { return scatteredCharge_; }
 
 void MdmFieldMapTrace::SetScatteredEnergy(double energyMeV) {
   scatteredEnergyMeV_ = energyMeV;
@@ -370,22 +363,22 @@ void MdmFieldMapTrace::SendRay() {
         "Magnet settings must be configured before SendRay");
   }
   ValidateLoadedMaps();
-  if (scatteredMassAmu_ <= 0.0) {
-    throw std::runtime_error("Scattered mass must be positive");
+  if (ionMassMeV_ <= 0.0) {
+    throw std::runtime_error("Ion mass must be positive");
   }
-  if (scatteredCharge_ == 0.0) {
-    throw std::runtime_error("Scattered charge must be non-zero");
+  if (ionChargeState_ == 0.0) {
+    throw std::runtime_error("Ion charge state must be non-zero");
   }
   if (scatteredEnergyMeV_ <= 0.0) {
     throw std::runtime_error("Scattered energy must be positive");
   }
 
-  const double massMeV = scatteredMassAmu_ * 931.48;
+  const double massMeV = ionMassMeV_;
   const double totalEnergyMeV = massMeV + scatteredEnergyMeV_;
   const double speedCmPerSecond =
       std::sqrt((2.0 * massMeV + scatteredEnergyMeV_) * scatteredEnergyMeV_) /
       totalEnergyMeV * kSpeedOfLightCmPerSecond;
-  const double kFactor = (scatteredCharge_ / totalEnergyMeV) * 9.0e10;
+  const double kFactor = (ionChargeState_ / totalEnergyMeV) * 9.0e10;
 
   const double thetaXMrad =
       kMilliradiansPerDegree * (scatteredAnglesDeg_[0] - mdmAngleDeg_);

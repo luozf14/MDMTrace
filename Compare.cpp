@@ -1,4 +1,5 @@
 #include "MdmFieldMapTrace.h"
+#include "MdmIonConfig.h"
 #include "MdmRayScan.h"
 #include "MdmTrace.h"
 
@@ -40,8 +41,7 @@ struct Config {
   double dipoleField = 0.0;
   double dipoleProbe = 0.0;
   double multipoleProbe = 0.0;
-  double mass = 0.0;
-  double charge = 0.0;
+  MdmIon ion;
   std::string multipoleMap = "Multipole.bin";
   std::string dipoleEntranceMap = "DipoleEntrance.bin";
   std::string dipoleSectorMap = "DipoleSector.bin";
@@ -101,8 +101,7 @@ Config ParseConfig(const Json::Value& c) {
   cfg.dipoleField = GetDouble(c, "mdmDipoleField");
   cfg.dipoleProbe = GetDouble(c, "mdmDipoleProbe");
   cfg.multipoleProbe = GetDouble(c, "mdmMultipoleProbe");
-  cfg.mass = GetDouble(c, "scatteredMass");
-  cfg.charge = GetDouble(c, "scatteredCharge");
+  cfg.ion = mdm::ParseScatteredIon(c);
   cfg.multipoleMap = GetString(c, "multipoleMapPath", "Multipole.bin");
   cfg.dipoleEntranceMap =
       GetString(c, "dipoleEntranceMapPath", "DipoleEntrance.bin");
@@ -115,16 +114,14 @@ void Configure(MdmTrace& trace, const Config& cfg) {
   trace.SetMdmAngle(cfg.mdmAngle);
   cfg.usingProbe ? trace.SetMdmProbe(cfg.dipoleProbe, cfg.multipoleProbe)
                  : trace.SetMdmDipoleField(cfg.dipoleField);
-  trace.SetScatteredMass(cfg.mass);
-  trace.SetScatteredCharge(cfg.charge);
+  trace.SetScatteredIon(cfg.ion);
 }
 
 void Configure(MdmFieldMapTrace& trace, const Config& cfg) {
   trace.SetMdmAngle(cfg.mdmAngle);
   cfg.usingProbe ? trace.SetMdmProbe(cfg.dipoleProbe, cfg.multipoleProbe)
                  : trace.SetMdmDipoleField(cfg.dipoleField);
-  trace.SetScatteredMass(cfg.mass);
-  trace.SetScatteredCharge(cfg.charge);
+  trace.SetScatteredIon(cfg.ion);
   trace.LoadFieldMaps(cfg.multipoleMap, cfg.dipoleEntranceMap,
                       cfg.dipoleSectorMap, cfg.dipoleExitMap);
 }

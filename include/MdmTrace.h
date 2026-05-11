@@ -1,5 +1,7 @@
 #pragma once
 
+#include "MdmIon.h"
+
 class MdmTrace {
  public:
   MdmTrace();
@@ -32,10 +34,7 @@ class MdmTrace {
   void SetProjectileMass(double);
   double GetProjectileMass() const;
 
-  void SetScatteredMass(double);
-  double GetScatteredMass() const;
-  void SetScatteredCharge(double);
-  double GetScatteredCharge() const;
+  void SetScatteredIon(const MdmIon&);
 
   double GetEnergyAfterKinematics() const;
   void SendRayWithKinematics();

@@ -54,9 +54,17 @@ The field-map tracer uses the same visible beamline logic but does not call Fort
 Particle speed is computed relativistically from kinetic energy:
 
 ```text
-m = A * 931.48 MeV
+m = ionMassMeV
 v/c = sqrt((2*m + T) * T) / (m + T)
 ```
+
+For `scatteredIon`, `ionMassMeV` is the AME2020 neutral atomic mass minus `chargeState` electron masses:
+
+```text
+ionMassMeV = neutralAtomicMassU * 931.49410242 - chargeState * 0.510998950
+```
+
+The charge state is also the magnetic charge used in the Lorentz force.
 
 The transport is magnetic only. There is no energy loss model.
 

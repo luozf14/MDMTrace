@@ -170,20 +170,9 @@ double MdmTrace::GetProjectileMass() const {
   return kineblck_.AM[0];
 }
 
-void MdmTrace::SetScatteredMass(double mass) {
-    blck4_.PMASS = mass;
-}
-
-double MdmTrace::GetScatteredMass() const {
-  return blck4_.PMASS;
-}
-
-void MdmTrace::SetScatteredCharge(double charge) {
-    blck4_.Q0 = charge;
-}
-
-double MdmTrace::GetScatteredCharge() const {
-  return blck4_.Q0;
+void MdmTrace::SetScatteredIon(const MdmIon& ion) {
+  blck4_.PMASS = ion.RaytraceMassAmu();
+  blck4_.Q0 = ion.chargeState;
 }
 
 double MdmTrace::GetEnergyAfterKinematics() const {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MdmFieldMap.h"
+#include "MdmIon.h"
 
 #include <string>
 
@@ -19,11 +20,7 @@ class MdmFieldMapTrace {
   void SetMdmProbe(double dipoleProbe, double multipoleProbe);
   void SetMdmDipoleField(double dipoleField);
 
-  void SetScatteredMass(double massAmu);
-  double GetScatteredMass() const;
-
-  void SetScatteredCharge(double charge);
-  double GetScatteredCharge() const;
+  void SetScatteredIon(const MdmIon& ion);
 
   void SetScatteredEnergy(double energyMeV);
   double GetScatteredEnergy() const;
@@ -46,8 +43,8 @@ class MdmFieldMapTrace {
   void ValidateLoadedMaps() const;
 
   double mdmAngleDeg_ = 0.0;
-  double scatteredMassAmu_ = 0.0;
-  double scatteredCharge_ = 0.0;
+  double ionMassMeV_ = 0.0;
+  double ionChargeState_ = 0.0;
   double scatteredEnergyMeV_ = 0.0;
   double initialXcm_ = 0.0;
   double initialYcm_ = 0.0;

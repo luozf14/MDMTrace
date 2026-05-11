@@ -1,18 +1,21 @@
 // Self-contained angle/energy scan for validation and ROOT comparison.
 {
-    "usingProbe"          : 1,
+    "usingProbe"          : 0,
     "mdmAngle"            : 0,
-    "mdmDipoleField"      : 2648.69673965,
-    "mdmDipoleProbe"      : 2561.60226272,
-    "mdmMultipoleProbe"   : 1818.73760653,
+    "mdmDipoleField"      : 2417.50,
+    "mdmDipoleProbe"      : 2338.006,
+    "mdmMultipoleProbe"   : 1659.98,
 
-    "scatteredMass"       : 12,
-    "scatteredCharge"     : 5,
-    "scatteredEnergy"     : 18,
+    "scatteredIon": {
+        "massNumber"   : 12,
+        "atomicNumber" : 6,
+        "chargeState"  : 5
+    },
+    "scatteredEnergy"     : 15,
     "scatteredEnergyGrid" : {
-        "eMin"  : 17.0,
-        "eMax"  : 19.0,
-        "eStep" : 0.1
+        "eMin"  : 14,
+        "eMax"  : 16,
+        "eStep" : 0.5
     },
 
     "scatteredAngleGrid"  : {

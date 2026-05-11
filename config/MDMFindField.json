@@ -1,9 +1,12 @@
 // Tune one scalar MDM dipole field for a given ion using legacy RAYTRACE.
 {
     "mdmAngle"        : 0,
-    "scatteredMass"   : 12,
-    "scatteredCharge" : 6,
-    "scatteredEnergy" : 18,
+    "scatteredIon": {
+        "massNumber"   : 12,
+        "atomicNumber" : 6,
+        "chargeState"  : 5
+    },
+    "scatteredEnergy" : 15,
 
     "fieldFinder": {
         "inputAngleXDeg"          : 0.0,

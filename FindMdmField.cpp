@@ -1,3 +1,4 @@
+#include "MdmIonConfig.h"
 #include "MdmTrace.h"
 #include "json.h"
 
@@ -10,7 +11,6 @@
 
 namespace {
 
-constexpr double kAmuMeV = 931.48;
 constexpr double kRigidityConstant = 0.299792458;
 constexpr double kDipoleRadiusCm = 160.0;
 constexpr double kStoppedPositionCm = 1.0e9;
@@ -19,8 +19,7 @@ constexpr int kMaxBoundaryExpansions = 8;
 
 struct Config {
   double mdmAngleDeg = 0.0;
-  double massAmu = 0.0;
-  double charge = 0.0;
+  MdmIon ion;
   double energyMeV = 0.0;
   double inputAngleXDeg = 0.0;
   double inputAngleYDeg = 0.0;
@@ -67,8 +66,7 @@ Json::Value ReadJson(const std::string& path) {
 Config ParseConfig(const Json::Value& json) {
   Config cfg;
   cfg.mdmAngleDeg = GetDouble(json, "mdmAngle");
-  cfg.massAmu = GetDouble(json, "scatteredMass");
-  cfg.charge = GetDouble(json, "scatteredCharge");
+  cfg.ion = mdm::ParseScatteredIon(json);
   cfg.energyMeV = GetDouble(json, "scatteredEnergy");
 
   const Json::Value& finder = json["fieldFinder"];
@@ -86,9 +84,10 @@ Config ParseConfig(const Json::Value& json) {
 }
 
 void CheckConfig(const Config& cfg) {
-  if (cfg.massAmu <= 0.0 || cfg.charge == 0.0 || cfg.energyMeV <= 0.0) {
-    throw std::runtime_error("scatteredMass, scatteredCharge, and "
-                             "scatteredEnergy must be physical");
+  if (cfg.ion.ionMassMeV <= 0.0 || cfg.ion.chargeState <= 0 ||
+      cfg.energyMeV <= 0.0) {
+    throw std::runtime_error("scatteredIon and scatteredEnergy must be "
+                             "physical");
   }
   if (cfg.positionScaleCm <= 0.0 || cfg.angleScaleDeg <= 0.0) {
     throw std::runtime_error("fieldFinder scales must be positive");
@@ -107,11 +106,10 @@ void CheckConfig(const Config& cfg) {
 }
 
 double InitialFieldGauss(const Config& cfg) {
-  const double massMeV = cfg.massAmu * kAmuMeV;
   const double momentumMeVPerC =
-      std::sqrt((2.0 * massMeV + cfg.energyMeV) * cfg.energyMeV);
+      std::sqrt((2.0 * cfg.ion.ionMassMeV + cfg.energyMeV) * cfg.energyMeV);
   const double bRhoKgCm =
-      momentumMeVPerC / (kRigidityConstant * std::abs(cfg.charge));
+      momentumMeVPerC / (kRigidityConstant * cfg.ion.chargeState);
   return 1000.0 * bRhoKgCm / kDipoleRadiusCm;
 }
 
@@ -119,8 +117,7 @@ RayResult TraceAtField(const Config& cfg, double fieldGauss) {
   MdmTrace trace;
   trace.SetMdmAngle(cfg.mdmAngleDeg);
   trace.SetMdmDipoleField(fieldGauss);
-  trace.SetScatteredMass(cfg.massAmu);
-  trace.SetScatteredCharge(cfg.charge);
+  trace.SetScatteredIon(cfg.ion);
   trace.SetScatteredEnergy(cfg.energyMeV);
   trace.SetScatteredAngle(cfg.inputAngleXDeg, cfg.inputAngleYDeg);
   trace.SendRay();
@@ -239,6 +236,9 @@ void PrintResult(const Config& cfg,
   const double multipoleProbe = dipoleProbe * 0.71;
 
   std::printf("Initial rigidity field: %.8f G\n", initialField);
+  std::printf("Ion: A=%d Z=%d q=%d neutralMass=%.12f u ionMass=%.8f MeV\n",
+              cfg.ion.massNumber, cfg.ion.atomicNumber, cfg.ion.chargeState,
+              cfg.ion.neutralMassU, cfg.ion.ionMassMeV);
   std::printf("Initial residual: %.8e\n", initial.chi2);
   std::printf("Best mdmDipoleField: %.8f G\n", best.fieldGauss);
   std::printf("Best mdmDipoleProbe: %.8f\n", dipoleProbe);

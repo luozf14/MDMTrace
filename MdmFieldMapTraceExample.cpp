@@ -1,4 +1,5 @@
 #include "MdmFieldMapTrace.h"
+#include "MdmIonConfig.h"
 #include "MdmRayScan.h"
 #include "json.h"
 
@@ -40,6 +41,7 @@ int main(int argc, char* argv[]) {
   configStream >> config;
   const bool usingProbe =
       config.isMember("usingProbe") && config["usingProbe"].asBool();
+  const MdmIon ion = mdm::ParseScatteredIon(config);
   const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(config);
 
   MdmFieldMapTrace trace;
@@ -50,8 +52,7 @@ int main(int argc, char* argv[]) {
   } else {
     trace.SetMdmDipoleField(GetDouble(config, "mdmDipoleField"));
   }
-  trace.SetScatteredMass(GetDouble(config, "scatteredMass"));
-  trace.SetScatteredCharge(GetDouble(config, "scatteredCharge"));
+  trace.SetScatteredIon(ion);
 
   const std::string multipolePath =
       GetString(config, "multipoleMapPath", "Multipole.bin");

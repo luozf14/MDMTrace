@@ -11,6 +11,10 @@ set (CMAKE_CXX_FLAGS "-fPIC")
 add_library(JsonCpp SHARED src/jsoncpp.cpp)
 target_include_directories(JsonCpp PUBLIC ${PROJECT_SOURCE_DIR}/include/json)
 
+add_library(MdmIon SHARED src/MdmIon.cpp)
+target_include_directories(MdmIon PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_compile_definitions(MdmIon PUBLIC MdmTrace_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 # standalone field-map reader/interpolator
 add_library(MdmFieldMap SHARED
     src/MdmFieldMap.cpp
@@ -22,7 +26,7 @@ add_library (MdmFieldMapTransport SHARED
     src/MdmFieldMapTrace.cpp
 )
 target_include_directories(MdmFieldMapTransport PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MdmFieldMapTransport PUBLIC MdmFieldMap)
+target_link_libraries(MdmFieldMapTransport PUBLIC MdmFieldMap MdmIon)
 
 # build library libMdmTraceFit
 add_library (MdmTrace SHARED
@@ -31,6 +35,7 @@ add_library (MdmTrace SHARED
     src/MdmFieldMapInterop.F90
 )
 target_include_directories(MdmTrace PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(MdmTrace PUBLIC MdmIon)
 
 # build executable file ${PROJECT_NAME}
 add_executable(${PROJECT_NAME} MdmTraceExample.cpp)
@@ -99,7 +104,7 @@ target_compile_options(GenerateIonOptics PRIVATE ${MdmTrace_ROOT_COMPILE_OPTIONS
 target_link_libraries(GenerateIonOptics PRIVATE ${MdmTrace_ROOT_LIBRARIES})
 
 # copy rayin.dat from dat/ to build/
-set(DAT_FILES rayin.dat)
+set(DAT_FILES rayin.dat mass_1.mas20.txt)
 foreach(_datFiles ${DAT_FILES})
     configure_file(${PROJECT_SOURCE_DIR}/dat/${_datFiles} ${PROJECT_BINARY_DIR}/${_datFiles} COPYONLY)
 endforeach()

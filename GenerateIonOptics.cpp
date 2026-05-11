@@ -1,4 +1,5 @@
 #include "MdmFieldMapTrace.h"
+#include "MdmIonConfig.h"
 #include "json.h"
 
 #include <TDecompSVD.h>
@@ -25,7 +26,6 @@
 
 namespace {
 
-constexpr double kAmuMeV = 931.48;
 constexpr double kMradPerDegree = 1000.0 * 3.14159265358979323846 / 180.0;
 constexpr double kTraceMradPerDegree = 17.453;
 constexpr double kSpeedOfLightCmPerSecond = 3.0e10;
@@ -44,8 +44,7 @@ struct Config {
   double dipoleField = 0.0;
   double dipoleProbe = 0.0;
   double multipoleProbe = 0.0;
-  double massAmu = 0.0;
-  double charge = 0.0;
+  MdmIon ion;
   std::string multipoleMap = "Multipole.bin";
   std::string dipoleEntranceMap = "DipoleEntrance.bin";
   std::string dipoleSectorMap = "DipoleSector.bin";
@@ -218,8 +217,7 @@ Config ParseConfig(const Json::Value& json) {
   cfg.dipoleField = GetDouble(json, "mdmDipoleField");
   cfg.dipoleProbe = GetDouble(json, "mdmDipoleProbe");
   cfg.multipoleProbe = GetDouble(json, "mdmMultipoleProbe");
-  cfg.massAmu = GetDouble(json, "scatteredMass");
-  cfg.charge = GetDouble(json, "scatteredCharge");
+  cfg.ion = mdm::ParseScatteredIon(json);
   cfg.multipoleMap = GetString(json, "multipoleMapPath", "Multipole.bin");
   cfg.dipoleEntranceMap =
       GetString(json, "dipoleEntranceMapPath", "DipoleEntrance.bin");
@@ -276,11 +274,8 @@ void CheckConfig(const Config& cfg, const IonOpticsConfig& optics) {
   if (optics.order < 1 || optics.order > 5) {
     throw std::runtime_error("ionOptics.order must be 1, 2, 3, 4, or 5");
   }
-  if (cfg.massAmu <= 0.0) {
-    throw std::runtime_error("scatteredMass must be positive");
-  }
-  if (cfg.charge == 0.0) {
-    throw std::runtime_error("scatteredCharge must be non-zero");
+  if (cfg.ion.ionMassMeV <= 0.0 || cfg.ion.chargeState <= 0) {
+    throw std::runtime_error("scatteredIon must be physical");
   }
   if (optics.referenceEnergyMeV <= 0.0) {
     throw std::runtime_error("reference energy must be positive");
@@ -298,29 +293,25 @@ void ConfigureTrace(MdmFieldMapTrace& trace, const Config& cfg) {
   trace.SetMdmAngle(cfg.mdmAngleDeg);
   cfg.usingProbe ? trace.SetMdmProbe(cfg.dipoleProbe, cfg.multipoleProbe)
                  : trace.SetMdmDipoleField(cfg.dipoleField);
-  trace.SetScatteredMass(cfg.massAmu);
-  trace.SetScatteredCharge(cfg.charge);
+  trace.SetScatteredIon(cfg.ion);
   trace.LoadFieldMaps(cfg.multipoleMap, cfg.dipoleEntranceMap,
                       cfg.dipoleSectorMap, cfg.dipoleExitMap);
 }
 
 double EnergyFromDeltaPercent(double referenceEnergyMeV,
-                              double massAmu,
+                              double massMeV,
                               double deltaPercent) {
-  const double massMeV = massAmu * kAmuMeV;
   const double p0 =
       std::sqrt((2.0 * massMeV + referenceEnergyMeV) * referenceEnergyMeV);
   const double p = p0 * (1.0 + deltaPercent * kPercentToFraction);
   return std::sqrt(p * p + massMeV * massMeV) - massMeV;
 }
 
-double GammaFromEnergy(double energyMeV, double massAmu) {
-  const double massMeV = massAmu * kAmuMeV;
+double GammaFromEnergy(double energyMeV, double massMeV) {
   return (massMeV + energyMeV) / massMeV;
 }
 
-double SpeedFromEnergy(double energyMeV, double massAmu) {
-  const double massMeV = massAmu * kAmuMeV;
+double SpeedFromEnergy(double energyMeV, double massMeV) {
   const double p = std::sqrt((2.0 * massMeV + energyMeV) * energyMeV);
   return p / (massMeV + energyMeV) * kSpeedOfLightCmPerSecond;
 }
@@ -335,7 +326,7 @@ TraceResult TraceRay(MdmFieldMapTrace& trace,
                                              kTraceMradPerDegree,
                           input.thetaYMrad / kTraceMradPerDegree);
   trace.SetScatteredEnergy(
-      EnergyFromDeltaPercent(optics.referenceEnergyMeV, cfg.massAmu,
+      EnergyFromDeltaPercent(optics.referenceEnergyMeV, cfg.ion.ionMassMeV,
                              input.deltaPercent));
   trace.SendRay();
 
@@ -883,6 +874,10 @@ void WriteReport(std::ostream& out,
   out << "# config: " << configPath << "\n";
   out << "# maps: " << cfg.multipoleMap << ", " << cfg.dipoleEntranceMap
       << ", " << cfg.dipoleSectorMap << ", " << cfg.dipoleExitMap << "\n";
+  out << "# ion: A=" << cfg.ion.massNumber << " Z=" << cfg.ion.atomicNumber
+      << " q=" << cfg.ion.chargeState << " neutralMassU="
+      << cfg.ion.neutralMassU << " ionMassMeV=" << cfg.ion.ionMassMeV
+      << "\n";
   out << "# vector columns: x[mm] thetaX[mrad] y[mm] thetaY[mrad] "
          "L[mm] deltaP/P0[%]\n";
   out << "# momentum coordinate: deltaP/P0 is percent; p = p0*(1 + "
@@ -982,8 +977,8 @@ int main(int argc, char* argv[]) {
   }
   const LongitudinalReference longitudinal{
       referenceResult.tofSeconds,
-      SpeedFromEnergy(optics.referenceEnergyMeV, cfg.massAmu),
-      GammaFromEnergy(optics.referenceEnergyMeV, cfg.massAmu)};
+      SpeedFromEnergy(optics.referenceEnergyMeV, cfg.ion.ionMassMeV),
+      GammaFromEnergy(optics.referenceEnergyMeV, cfg.ion.ionMassMeV)};
 
   FitStats stats;
   const std::vector<PhaseSpace> inputs =

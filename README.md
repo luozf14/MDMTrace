@@ -52,6 +52,7 @@ There are three self-contained JSON configs:
 
 Important conventions:
 - JSON keys keep the original `mdm...` names, for example `mdmDipoleProbe` and `mdmDipoleField`.
+- `scatteredIon` defines the isotope and transported charge state; the tools read AME2020 atomic masses from `dat/mass_1.mas20.txt`.
 - If `usingProbe` is true, tools use `mdmDipoleProbe` and `mdmMultipoleProbe`.
 - If `usingProbe` is false, tools use `mdmDipoleField` and derive the equivalent probes with the project calibration rules.
 - Relative map paths are resolved from the current working directory, so the usual workflow is to run tools from `build/`.

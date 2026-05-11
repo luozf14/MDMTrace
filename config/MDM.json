@@ -3,13 +3,16 @@
 {
     "usingProbe"          : 0,
     "mdmAngle"            : 0,
-    "mdmDipoleField"      : 2207.24728304,
-    "mdmDipoleProbe"      : 2134.66855227,
-    "mdmMultipoleProbe"   : 1515.61467211,
+    "mdmDipoleField"      : 2417.50,
+    "mdmDipoleProbe"      : 2338.006,
+    "mdmMultipoleProbe"   : 1659.98,
 
-    "scatteredMass"       : 12,
-    "scatteredCharge"     : 6,
-    "scatteredEnergy"     : 18,
+    "scatteredIon": {
+        "massNumber"   : 12,
+        "atomicNumber" : 6,
+        "chargeState"  : 5
+    },
+    "scatteredEnergy"     : 15,
     "scatteredAngles"     : [0],
 
     "fieldMapSpacingMm"   : 5.0,
@@ -30,7 +33,7 @@
             "thetaXMrad" : 0.0,
             "yMm"        : 0.0,
             "thetaYMrad" : 0.0,
-            "energyMeV"  : 18.0
+            "energyMeV"  : 15.0
         },
         "method": "fit",
         "order": 5,
