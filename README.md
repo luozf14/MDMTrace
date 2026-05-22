@@ -42,6 +42,14 @@ The generator writes:
 
 The trace examples print the same final-result line format so the legacy RAYTRACE result and field-map result can be compared directly.
 
+## Visualization
+
+<img src="visual/multipole_slice.png" alt="Multipole field slices" width="760">
+<img src="visual/dipole_slice.png" alt="Dipole field slices" width="500">
+
+
+ROOT plotting macros and figure notes are documented in [Field-Map Visualization](reference/visualization.md).
+
 ## Config Files
 
 There are three self-contained JSON configs:
@@ -57,7 +65,7 @@ Important conventions:
 - If `usingProbe` is false, tools use `mdmDipoleField` and derive the equivalent probes with the project calibration rules.
 - Relative map paths are resolved from the current working directory, so the usual workflow is to run tools from `build/`.
 
-## Reference
+## Details
 
 Detailed documentation is split into:
 
@@ -65,4 +73,5 @@ Detailed documentation is split into:
 - [Configuration](reference/configuration.md): JSON keys, scan-grid rules, map paths, ion-optics settings, and field-finder settings.
 - [Physics Conventions](reference/physics.md): beamline sequence, magnet-setting convention, coordinate systems, transport model, second-multipole behavior, and `L` definition.
 - [Field Map Format](reference/field-map-format.md): binary file layout, header keys, `MdmFieldMap` usage notes, split-dipole metadata, and masked-zero regions.
+- [Field-Map Visualization](reference/visualization.md): ROOT macros and example figures.
 - [Validation Workflow](reference/validation.md): legacy-vs-field-map comparison steps, ROOT comparison plots, map compatibility checks, and known limitations.

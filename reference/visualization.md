@@ -1,20 +1,24 @@
 # Field-Map Visualization
 
-The `visual/` macros provide ROOT-only diagnostics for generated MDM field
-maps. They read the binary field-map format directly and draw interactive ROOT
-canvases by default. They do not write PNG, PDF, or ROOT files unless a user
-adds that manually from the ROOT session.
+The `visual/` directory contains ROOT-only macros for checking the generated
+field maps. Run them from `build/`; the macros open interactive ROOT canvases
+and do not save images by default.
 
-## Default Usage
-
-Run from `build/` after generating field maps:
+## Quick Start
 
 ```bash
+cd build
 root -l ../visual/PlotAllFieldMaps.C
 ```
 
-The default macro opens multipole slice/profile canvases, one combined dipole
-top-down `By` canvas, and dipole centerline profiles for:
+The default command opens:
+
+- multipole transverse `x-y` field slices
+- multipole fixed-radius field-strength profiles versus `z`
+- one combined dipole top-down `By` map in physical dipole coordinates
+- dipole longitudinal component profiles
+
+The expected input files are:
 
 ```text
 Multipole.bin
@@ -23,77 +27,118 @@ DipoleSector.bin
 DipoleExit.bin
 ```
 
-Individual views can be run directly:
+## Example Output
 
-```bash
-root -l '../visual/PlotFieldSlices.C("DipoleSector.bin")'
-root -l '../visual/PlotFieldProfiles.C("Multipole.bin")'
-root -l '../visual/PlotDipoleTopDown.C("DipoleEntrance.bin","DipoleSector.bin","DipoleExit.bin")'
+These images are static examples. The ROOT macros remain interactive unless you
+save canvases manually from ROOT.
+
+The example figures use these Hall probe settings:
+
+```text
+DipoleProbe    = 2338.00 Gauss
+MultipoleProbe = 1659.98 Gauss
 ```
 
-For a non-interactive smoke test, add `-b -q`.
+### Multipole
 
-## Macros
+<img src="../visual/multipole_slice.png" alt="Multipole transverse field slices" width="720">
 
-`FieldMapCommon.C` contains the shared field-map reader and plotting helpers.
-It parses the ASCII header, reads the `Bx`, `By`, and `Bz` float arrays, and
-uses the stored grid origin and spacing for all axes.
+<img src="../visual/multipole_profile.png" alt="Multipole fixed-radius field profile" width="560">
 
-`PlotFieldSlices.C` treats multipole and dipole maps differently. For the
-multipole it draws three transverse `x-y` slices: one in the entrance fringe,
-one in the uniform region, and one in the exit fringe. The three panels share
-the same `|B|` color scale and overlay `Bx,By` arrows for transverse field
-direction. For dipole maps it remains a storage-coordinate diagnostic at the
-requested `y` value:
+### Dipole
 
-- `|B|(x,z)` or `|B|(dr,s)` for total field strength
-- `By(x,z)` or `By(dr,s)` for the dominant dipole component
+<img src="../visual/dipole_slice.png" alt="Dipole top-down By map" width="560">
 
-`PlotFieldProfiles.C` draws a longitudinal multipole field-strength summary
-instead of using the zero-field symmetry axis. The multipole profile shows
-angular-average `|B|` versus `z` at several fixed radii, with dashed lines
-marking the transition planes. For dipoles it still draws `Bx`, `By`, `Bz`, and
-`|B|` along a longitudinal line, which is useful for checking fringe falloff and
-sector flatness.
+<img src="../visual/dipole_profile.png" alt="Dipole sector field profile" width="560">
 
-`PlotDipoleTopDown.C` loads the entrance, sector, and exit dipole maps together
-and projects all three into the same physical dipole-local top-down frame. The
-horizontal axis is dipole local `x [cm]`, the vertical axis is dipole local
-`z [cm]`, and the bend should curve toward `-x`. The color scale shows `By`,
-the dominant dipole bending-field component. The plot is sampled in physical
-top-down coordinates and uses trilinear interpolation from the underlying field
-maps, so valid mapped regions should not show internal grid holes.
+## What To Look For
 
-`PlotField3D.C` is left as an explicit debug macro, but it is not part of the
-default workflow. ROOT's sparse 3D vector display is difficult to interpret for
-the curved dipole geometry.
+### Multipole Slices
 
-`PlotAllFieldMaps.C` is the default entrypoint. It draws the multipole slice and
-profile, the combined dipole top-down view, and the dipole profiles.
+`PlotFieldSlices("Multipole.bin")` draws three square `x-y` views:
 
-## Interpreting Plots
+- entrance fringe
+- uniform region
+- exit fringe
 
-For dipole maps, the storage coordinates are not the best visual coordinates.
-Entrance is stored as `(xB,zB)`, sector as `(dr,s)`, and exit as `(xC,zC)`.
-The top-down macro transforms all three regions back into physical dipole-local
-`x-z` coordinates before plotting, so it shows the actual bend geometry.
+All three pads use the same `|B|` color scale, so the colors can be compared
+directly. White arrows show the transverse field direction from `Bx,By`; the
+arrow size is qualitative, while the color gives the field strength in Tesla.
 
-`By` should usually dominate in the dipole. The top-down `By` plot is therefore
-the easiest first check for the main bending field, fringe regions, and sector
-flatness.
+This plot is the fastest way to check the transverse multipole pattern, the
+circular aperture mask, and whether entrance and exit fringe slices look
+reasonable.
 
-For the multipole map, compare the total-field slice with the component
-vectors and longitudinal profile to see transverse structure, the circular
-aperture mask, and the entrance-uniform-exit field evolution. Zero regions in
-the plots can be physical masking or points outside a represented field region;
-the maps store those values as zero.
+### Multipole Profile
 
-The longitudinal axis label follows the map coordinate system:
+`PlotFieldProfiles("Multipole.bin")` does not use the central axis, because
+the multipole field is zero there by symmetry. Instead, it samples several
+fixed radii and plots angular-average `|B|` versus `z`.
 
-- multipole: `z`
-- dipole entrance: `zB`
-- dipole sector: `s`
-- dipole exit: `zC`
+The legend uses radius fractions such as `r = 0.25R`, where `R` is the
+multipole aperture radius. The dashed vertical lines mark the nominal
+transition planes between entrance fringe, uniform region, and exit fringe.
 
-The transverse horizontal axis is similarly labeled as `x`, `xB`, `dr`, or
-`xC` depending on the map.
+Use this plot to see how the field turns on, stays flat, and turns off along
+the beam direction.
+
+### Dipole Top-Down Map
+
+`PlotDipoleTopDown(...)` combines `DipoleEntrance.bin`, `DipoleSector.bin`, and
+`DipoleExit.bin` into one physical top-down view. This is different from the
+storage coordinates in the separate map files:
+
+- entrance is stored as `(xB,zB)`
+- sector is stored as `(dr,s)`
+- exit is stored as `(xC,zC)`
+
+The macro transforms all three into dipole-local `x-z` coordinates before
+plotting. The bend should visibly curve toward `-x`. The color scale is `By`,
+the dominant dipole bending-field component. Blue, black, and red outlines mark
+the entrance, sector, and exit regions.
+
+### Dipole Profiles
+
+`PlotFieldProfiles("DipoleSector.bin")` and the corresponding entrance/exit
+commands plot `Bx`, `By`, `Bz`, and `|B|` along the map's longitudinal
+coordinate. For the sector map, horizontal labels mark the estimated
+`entrance -> sector` and `sector -> exit` transition positions.
+
+Use these profiles to check that `By` dominates, the sector is flat, and the
+fringe regions connect in the expected order.
+
+## Direct Commands
+
+Run these from `build/`:
+
+```bash
+root -l '../visual/PlotFieldSlices.C("Multipole.bin")'
+root -l '../visual/PlotFieldProfiles.C("Multipole.bin")'
+root -l '../visual/PlotDipoleTopDown.C("DipoleEntrance.bin","DipoleSector.bin","DipoleExit.bin")'
+root -l '../visual/PlotFieldProfiles.C("DipoleSector.bin")'
+```
+
+For a non-interactive smoke test, add `-b -q`:
+
+```bash
+root -l -b -q ../visual/PlotAllFieldMaps.C
+```
+
+## Macro Summary
+
+`FieldMapCommon.C` contains the binary field-map reader, coordinate helpers,
+and trilinear interpolation.
+
+`PlotFieldSlices.C` draws multipole `x-y` slices with arrows. For dipole maps,
+it remains a storage-coordinate diagnostic slice.
+
+`PlotFieldProfiles.C` draws fixed-radius multipole profiles versus `z` and
+dipole component profiles versus the map's longitudinal coordinate.
+
+`PlotDipoleTopDown.C` draws the combined dipole physical top-down `By` map.
+
+`PlotAllFieldMaps.C` is the default entrypoint.
+
+`PlotField3D.C` is kept only as an explicit debug macro. It is not part of the
+default workflow because the sparse ROOT 3D view is hard to interpret for the
+curved dipole.
