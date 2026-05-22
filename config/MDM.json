@@ -1,10 +1,10 @@
 // Main MDM setup used by the generator, trace examples, and ion-optics fit.
 // Extra keys are ignored by tools that do not need them.
 {
-    "usingProbe"          : 0,
+    "usingProbe"          : 1,
     "mdmAngle"            : 0,
     "mdmDipoleField"      : 2417.50,
-    "mdmDipoleProbe"      : 2338.006,
+    "mdmDipoleProbe"      : 2338.00,
     "mdmMultipoleProbe"   : 1659.98,
 
     "scatteredIon": {
@@ -15,7 +15,7 @@
     "scatteredEnergy"     : 15,
     "scatteredAngles"     : [0],
 
-    "fieldMapSpacingMm"   : 5.0,
+    "fieldMapSpacingMm"   : 2.5,
     "outputDirectory"     : ".",
     "multipoleOutput"     : "Multipole.bin",
     "dipoleEntranceOutput": "DipoleEntrance.bin",
@@ -36,7 +36,7 @@
             "energyMeV"  : 15.0
         },
         "method": "fit",
-        "order": 5,
+        "order": 1,
         "threads": 0,
         "maxRays": 1e8,
         "fitGrid": {

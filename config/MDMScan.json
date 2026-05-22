@@ -1,9 +1,9 @@
 // Self-contained angle/energy scan for validation and ROOT comparison.
 {
-    "usingProbe"          : 0,
+    "usingProbe"          : 1,
     "mdmAngle"            : 0,
     "mdmDipoleField"      : 2417.50,
-    "mdmDipoleProbe"      : 2338.006,
+    "mdmDipoleProbe"      : 2338.00,
     "mdmMultipoleProbe"   : 1659.98,
 
     "scatteredIon": {
@@ -13,8 +13,8 @@
     },
     "scatteredEnergy"     : 15,
     "scatteredEnergyGrid" : {
-        "eMin"  : 14,
-        "eMax"  : 16,
+        "eMin"  : 13,
+        "eMax"  : 17,
         "eStep" : 0.5
     },
 
