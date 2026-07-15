@@ -1,96 +1,91 @@
 # Validation
 
-The main validation is a direct comparison between the legacy RAYTRACE transport and the generated field-map transport.
-
-## Basic Workflow
-
-Build and generate maps:
+## Build
 
 ```bash
 cmake -S . -B build
 cmake --build build -j4
-cd build
-./MdmFieldMapGenerator ../config/MDM.json
 ```
 
-Run one normal ray through both transport paths:
+ROOT controls only `Compare` and `GenerateIonOptics`. A machine without ROOT should still configure and build the other four executables. The build also copies `rayin.dat` and `mass_1.mas20.txt` into `build/`.
+
+## Normal transport workflow
 
 ```bash
+cd build
+./FindMdmField ../config/MDMFindField.json
+./MdmFieldMapGenerator ../config/MDM.json
 ./MdmTraceExample ../config/MDM.json
 ./MdmFieldMapTraceExample ../config/MDM.json
 ```
 
-The two programs print the same line format. Compare:
-- `X1`
-- `Y1`
-- `AngX1`
-- `AngY1`
+The generator must retain the four filenames `Multipole.bin`, `DipoleEntrance.bin`, `DipoleSector.bin`, and `DipoleExit.bin`. Both trace examples must retain the same final-line fields and units so their output can be compared directly:
 
-## Scan Validation
+```text
+X1 cm, Y1 cm, AngX1 deg, AngY1 deg
+```
 
-Use the scan config:
+The map tracer loads all four required files and fails clearly for a wrong map role, inconsistent probe metadata, or a mismatch between map probes and the requested configuration.
+
+## Scan comparison
 
 ```bash
 ./MdmTraceExample ../config/MDMScan.json
 ./MdmFieldMapTraceExample ../config/MDMScan.json
+./Compare ../config/MDMScan.json
 ```
 
-`config/MDMScan.json` can include:
-- `scatteredAngleGrid`
-- `scatteredEnergyGrid`
-- explicit `scatteredAnglePairs`
+Before tracing, each scan path reports:
 
-The output order is deterministic, so lines can be compared directly.
+- energy values;
+- horizontal-angle values;
+- vertical-angle values;
+- total rays.
 
-## ROOT Comparison
+`Compare` requires ROOT and writes `Compare.root`. It reports rays accepted by both transports, stopped by both, and stopped by only one transport. Its `Legacy - FieldMap` fits, canvases, RMS values, and maximum residuals exclude stopped-ray sentinel positions and use only rays accepted by both transports.
 
-Run:
+## Ion optics
 
 ```bash
-./Compare
+./GenerateIonOptics ../config/MDM.json
 ```
 
-This reads `config/MDMScan.json`, runs both transports, and writes:
+This requires ROOT. Its text output must identify the six-dimensional vector as:
 
 ```text
-Compare.root
+[x mm, thetaX mrad, y mm, thetaY mrad, L mm, deltaP/P0 %]
 ```
 
-The ROOT file contains four canvases:
-- `c_X1`
-- `c_Y1`
-- `c_AngX1`
-- `c_AngY1`
+The fit-grid `delta` values and output coefficients use percent momentum deviation.
 
-Each canvas contains:
-- top pad: field-map result versus legacy result
-- fitted linear function
-- displayed `R^2`
-- bottom pad: residual `Legacy - FieldMap`
+## Configuration rejection checks
 
-The compact stdout summary reports RMS and maximum residuals.
+The three checked-in commented files must parse. Boundary checks include:
 
-## Map Compatibility Checks
+- `usingProbe: true` is accepted, while numeric `usingProbe: 1` is rejected;
+- missing or malformed ion fields are rejected;
+- `A > 0`, `Z >= 0`, `A >= Z`, and `0 <= Q <= Z`;
+- kinetic energy is not negative;
+- `fieldMapSpacingMm` is positive;
+- scan and fit-grid steps are positive and ranges are ordered;
+- ion-optics order is an integer from 1 through 5;
+- ray, iteration, thread, and process counts are nonnegative integers.
 
-The field-map tracer checks that the requested magnetic setting matches the metadata stored in the map headers.
+Configuration files support `//` comments, and harmless keys unused by a particular executable remain allowed.
 
-If `usingProbe=true`, the config probes must match:
+## Preserved physics checks
 
-```text
-mdmDipoleProbe
-mdmMultipoleProbe
-```
+Source and map headers must remain consistent with:
 
-If `usingProbe=false`, the equivalent probes are derived from `mdmDipoleField` and compared against the map metadata.
+- 160 cm dipole reference radius;
+- 100-degree nominal sector angle;
+- `3.0e10 cm/s` RAYTRACE convention;
+- 0.1 cm multipole and dipole integration steps;
+- cm positions and Tesla fields;
+- component-major, x-fastest map payloads;
+- trilinear interpolation;
+- copied apertures and zero-field drifts;
+- inactive second multipole;
+- relative probe tolerance `2.0e-6`.
 
-Maps are not silently rescaled. Regenerate maps when the requested magnetic setting changes.
-
-## Known Limitations
-
-The field-map validator is specific to the current MDM layout. It is not a general RAYTRACE deck interpreter.
-
-Generated maps contain magnetic fields only. Drifts, apertures, and the inactive second multipole are handled by the validator code, not by the field-map files.
-
-The field maps are sampled on regular grids. Consumers interpolate between stored RAYTRACE samples. Reducing `fieldMapSpacingMm` can improve agreement with legacy transport at the cost of larger files and slower generation.
-
-The ion-optics fitter is a least-squares map over the chosen fit grid. High-order fits need enough accepted rays and can produce large text output.
+Smaller `fieldMapSpacingMm` values produce larger maps and may improve interpolation agreement. They do not change the underlying RAYTRACE field formulas.

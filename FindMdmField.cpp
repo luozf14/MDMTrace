@@ -1,10 +1,10 @@
+#include "MdmConfig.h"
 #include "MdmIonConfig.h"
 #include "MdmTrace.h"
 #include "json.h"
 
 #include <cmath>
 #include <cstdio>
-#include <fstream>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -48,21 +48,6 @@ double GetDouble(const Json::Value& value,
                                                  : fallback;
 }
 
-int GetInt(const Json::Value& value, const char* key, int fallback) {
-  return value.isObject() && value.isMember(key) ? value[key].asInt()
-                                                 : fallback;
-}
-
-Json::Value ReadJson(const std::string& path) {
-  std::ifstream stream(path.c_str());
-  if (!stream) {
-    throw std::runtime_error("Cannot open config: " + path);
-  }
-  Json::Value config;
-  stream >> config;
-  return config;
-}
-
 Config ParseConfig(const Json::Value& json) {
   Config cfg;
   cfg.mdmAngleDeg = GetDouble(json, "mdmAngle");
@@ -70,16 +55,21 @@ Config ParseConfig(const Json::Value& json) {
   cfg.energyMeV = GetDouble(json, "scatteredEnergy");
 
   const Json::Value& finder = json["fieldFinder"];
+  if (!finder.isObject()) {
+    throw std::runtime_error("fieldFinder must be an object");
+  }
   cfg.inputAngleXDeg = GetDouble(finder, "inputAngleXDeg", 0.0);
   cfg.inputAngleYDeg = GetDouble(finder, "inputAngleYDeg", 0.0);
   cfg.positionScaleCm = GetDouble(finder, "positionScaleCm", 0.1);
   cfg.angleScaleDeg = GetDouble(finder, "angleScaleDeg", 0.1);
   cfg.searchHalfWidthFraction =
       GetDouble(finder, "searchHalfWidthFraction", 0.25);
-  cfg.coarseSamples = GetInt(finder, "coarseSamples", 101);
+  cfg.coarseSamples = static_cast<int>(
+      mdm::GetNonnegativeInteger(finder, "coarseSamples", 101));
   cfg.fieldToleranceGauss =
       GetDouble(finder, "fieldToleranceGauss", 1.0e-3);
-  cfg.maxIterations = GetInt(finder, "maxIterations", 100);
+  cfg.maxIterations = static_cast<int>(
+      mdm::GetNonnegativeInteger(finder, "maxIterations", 100));
   return cfg;
 }
 
@@ -99,9 +89,9 @@ void CheckConfig(const Config& cfg) {
   if (cfg.coarseSamples < 3) {
     throw std::runtime_error("fieldFinder.coarseSamples must be at least 3");
   }
-  if (cfg.fieldToleranceGauss <= 0.0 || cfg.maxIterations <= 0) {
-    throw std::runtime_error("fieldFinder tolerance and maxIterations must be "
-                             "positive");
+  if (cfg.fieldToleranceGauss <= 0.0) {
+    throw std::runtime_error(
+        "fieldFinder.fieldToleranceGauss must be positive");
   }
 }
 
@@ -163,7 +153,8 @@ RayResult CoarseScan(const Config& cfg,
 RayResult GoldenSectionSearch(const Config& cfg,
                               double lowField,
                               double highField,
-                              int& iterations) {
+                              int& iterations,
+                              bool& converged) {
   const double gr = 0.5 * (std::sqrt(5.0) - 1.0);
   double a = lowField;
   double b = highField;
@@ -190,6 +181,7 @@ RayResult GoldenSectionSearch(const Config& cfg,
     }
     ++iterations;
   }
+  converged = std::abs(b - a) <= cfg.fieldToleranceGauss;
   return fc.chi2 < fd.chi2 ? fc : fd;
 }
 
@@ -197,7 +189,8 @@ RayResult TuneField(const Config& cfg,
                     double initialField,
                     int& coarseEvaluations,
                     int& refinementIterations,
-                    int& expansions) {
+                    int& expansions,
+                    bool& converged) {
   double halfWidth = cfg.searchHalfWidthFraction * initialField;
   double low = std::max(1.0, initialField - halfWidth);
   double high = initialField + halfWidth;
@@ -220,8 +213,8 @@ RayResult TuneField(const Config& cfg,
   const double bracketLow =
       std::max(1.0, coarseBest.fieldGauss - coarseStep);
   const double bracketHigh = coarseBest.fieldGauss + coarseStep;
-  RayResult refined =
-      GoldenSectionSearch(cfg, bracketLow, bracketHigh, refinementIterations);
+  RayResult refined = GoldenSectionSearch(cfg, bracketLow, bracketHigh,
+                                          refinementIterations, converged);
   return refined.chi2 < coarseBest.chi2 ? refined : coarseBest;
 }
 
@@ -231,23 +224,27 @@ void PrintResult(const Config& cfg,
                  const RayResult& best,
                  int coarseEvaluations,
                  int refinementIterations,
-                 int expansions) {
+                 int expansions,
+                 bool converged) {
   const double dipoleProbe = best.fieldGauss / 1.034;
   const double multipoleProbe = dipoleProbe * 0.71;
 
-  std::printf("Initial rigidity field: %.8f G\n", initialField);
+  std::printf("Initial rigidity field: %.12f G\n", initialField);
   std::printf("Ion: A=%d Z=%d q=%d neutralMass=%.12f u ionMass=%.8f MeV\n",
               cfg.ion.massNumber, cfg.ion.atomicNumber, cfg.ion.chargeState,
               cfg.ion.neutralMassU, cfg.ion.ionMassMeV);
   std::printf("Initial residual: %.8e\n", initial.chi2);
-  std::printf("Best mdmDipoleField: %.8f G\n", best.fieldGauss);
-  std::printf("Best mdmDipoleProbe: %.8f\n", dipoleProbe);
-  std::printf("Best mdmMultipoleProbe: %.8f\n", multipoleProbe);
-  std::printf("Final X1: %.8f cm\n", best.xCm);
-  std::printf("Final Y1: %.8f cm\n", best.yCm);
-  std::printf("Final AngX1: %.8f deg\n", best.angXDeg);
-  std::printf("Final AngY1: %.8f deg\n", best.angYDeg);
-  std::printf("Final residual: %.8e\n", best.chi2);
+  std::printf("Best mdmDipoleField: %.12f G\n", best.fieldGauss);
+  std::printf("Best mdmDipoleProbe: %.12f G\n", dipoleProbe);
+  std::printf("Best mdmMultipoleProbe: %.12f G\n", multipoleProbe);
+  std::printf("Final X1 residual: %.12g cm\n", best.xCm);
+  std::printf("Final Y1 residual: %.12g cm\n", best.yCm);
+  std::printf("Final AngX1 residual: %.12g deg\n", best.angXDeg);
+  std::printf("Final AngY1 residual: %.12g deg\n", best.angYDeg);
+  std::printf("Final weighted objective: %.12g\n", best.chi2);
+  std::printf("Convergence status: %s\n",
+              converged ? "converged" : "maximum iterations reached");
+  std::printf("Iteration count: %d\n", refinementIterations);
   std::printf("Improvement factor: %.8e\n", initial.chi2 / best.chi2);
   std::printf("Input ray: AngX %.8f deg, AngY %.8f deg, Energy %.8f MeV\n",
               cfg.inputAngleXDeg, cfg.inputAngleYDeg, cfg.energyMeV);
@@ -258,10 +255,10 @@ void PrintResult(const Config& cfg,
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int Run(int argc, char* argv[]) {
   const std::string configPath =
       argc > 1 ? argv[1] : "../config/MDMFindField.json";
-  const Config cfg = ParseConfig(ReadJson(configPath));
+  const Config cfg = ParseConfig(mdm::ReadConfig(configPath));
   CheckConfig(cfg);
 
   const double initialField = InitialFieldGauss(cfg);
@@ -269,13 +266,23 @@ int main(int argc, char* argv[]) {
   int coarseEvaluations = 0;
   int refinementIterations = 0;
   int expansions = 0;
+  bool converged = false;
   const RayResult best = TuneField(cfg, initialField, coarseEvaluations,
-                                  refinementIterations, expansions);
+                                  refinementIterations, expansions, converged);
   if (best.stopped) {
     std::cerr << "ERROR: best ray is stopped; no valid field found\n";
     return 1;
   }
   PrintResult(cfg, initialField, initial, best, coarseEvaluations,
-              refinementIterations, expansions);
+              refinementIterations, expansions, converged);
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+  try {
+    return Run(argc, argv);
+  } catch (const std::exception& error) {
+    std::cerr << "ERROR: " << error.what() << "\n";
+    return 1;
+  }
 }

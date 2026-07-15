@@ -1,8 +1,6 @@
-# Field Map Format
+# Field-map format
 
-The generated field maps are dense binary files with a small ASCII header followed by float32 field arrays.
-
-Generated files:
+MDMTrace preserves four dense binary map outputs:
 
 ```text
 Multipole.bin
@@ -11,9 +9,11 @@ DipoleSector.bin
 DipoleExit.bin
 ```
 
-## File Layout
+MDMTrace uses these maps itself for standalone map transport. MdmSim is one possible external consumer, but the format is not tied to it.
 
-Each file has:
+## File layout
+
+Each file contains an ASCII `key=value` header followed by the established binary payload:
 
 ```text
 key=value
@@ -23,7 +23,7 @@ END_HEADER
 binary payload
 ```
 
-The payload is little-endian `float32`, component-major, with x-fastest indexing:
+The payload is component-major `float32`:
 
 ```text
 Bx[nx*ny*nz]
@@ -31,7 +31,7 @@ By[nx*ny*nz]
 Bz[nx*ny*nz]
 ```
 
-Indexing:
+The x index changes fastest:
 
 ```text
 i = ix + nx * (iy + ny * iz)
@@ -40,122 +40,65 @@ y = origin_y + iy * dy
 z = origin_z + iz * dz
 ```
 
-Units in the files:
+Positions are in cm and fields are in Tesla. `MdmFieldMap::FieldTesla` uses trilinear interpolation and returns zero outside the stored grid or multipole aperture mask.
 
-```text
-position: cm
-field: Tesla
-```
+## Common metadata
 
-## `MdmFieldMap`
+The existing headers include:
 
-`include/MdmFieldMap.h` and `src/MdmFieldMap.cpp` are intentionally standalone C++ standard-library code. They do not depend on RAYTRACE, ROOT, JsonCpp, or Geant4.
+| Key | Meaning |
+| --- | --- |
+| `version` | Map-format version. |
+| `magnet` | Required role: `Multipole`, `DipoleEntrance`, `DipoleSector`, or `DipoleExit`. |
+| `units_length` | `cm`. |
+| `units_field` | `Tesla`. |
+| `nx`, `ny`, `nz` | Grid node counts. |
+| `origin_cm` | Position of node `(0,0,0)` in cm. |
+| `spacing_cm` | Grid step in cm. |
+| `payload_layout` | `component_major_x_fastest_float32`. |
+| `axis_definition` | Human-readable coordinate definition. |
+| `coordinate_system` | Named local coordinate system. |
+| `sampling_method` | `direct_raytrace`. |
+| `masked_zero_region` | Whether stored zeros mark a physical mask. |
+| `mdm_dipole_probe` | Dipole probe used for generation, in Gauss. |
+| `mdm_multipole_probe` | First-multipole probe used for generation, in Gauss. |
+| `requested_spacing_mm` | Requested generator spacing in mm. |
 
-Minimal usage:
+The loader preserves additional header fields. The standalone transport checks the four `magnet` roles, checks that probe values agree across all maps, and checks them against the requested configuration.
+
+## Multipole metadata
+
+The `Multipole` map uses centred local Cartesian coordinates with `+z` along the beam. Its metadata includes:
+
+- `multipole_aperture_radius_cm`;
+- `multipole_transition_planes_cm`;
+- deck fringe and length fields in cm.
+
+Nodes outside the circular aperture are stored as zero. The disabled second multipole is not represented.
+
+## Dipole metadata
+
+The dipole is split into three roles. Their `dipole_region` values are `entrance_fringe`, `sector`, and `exit_fringe`. Shared metadata includes:
+
+- `dipole_gap_cm`;
+- `dipole_reference_radius_cm` = 160 cm for the current deck;
+- `dipole_sector_angle_deg` = 100 degrees for the current deck;
+- `dipole_alpha_deg` and `dipole_beta_deg`;
+- entrance and exit fringe limits in cm;
+- `dipole_strip_half_width_cm`;
+- `field_component_frame = dipole_local_cartesian`.
+
+The sector coordinate is `(dr, y, s)` in cm with `dr = r - RB` and `s = RB * theta`. The entrance and exit maps use their respective local Cartesian frames. Vector components in all three maps remain in the dipole-local Cartesian frame.
+
+## Standalone reader
+
+`include/MdmFieldMap.h` and `src/MdmFieldMap.cpp` use only the C++ standard library. They do not depend on RAYTRACE, ROOT, JsonCpp, or Geant4.
 
 ```cpp
 #include "MdmFieldMap.h"
 
 MdmFieldMap map("Multipole.bin");
-Vec3 b = map.FieldTesla(x_cm, y_cm, z_cm);
+Vec3 fieldTesla = map.FieldTesla(xCm, yCm, zCm);
 ```
 
-External-use rules:
-- convert the Geant4/global position into the local magnet coordinates in cm
-- call `FieldTesla`
-- rotate the returned local field vector back into the external frame
-- `FieldTesla` returns zero outside the stored box or outside the map aperture/mask
-- metadata is available in `map.h` and extra untyped fields are in `map.h.extra`
-
-This class is the intended file to copy into a future Geant4 project. A Geant4 field class should mainly handle coordinate transforms and unit conversion around it.
-
-## Typed Header Fields
-
-`MdmFieldMap` reads common fields into:
-
-```cpp
-struct MdmFieldMapHeader {
-  std::string magnet;
-  int nx, ny, nz;
-  Vec3 origin_cm;
-  Vec3 step_cm;
-  std::string axis_definition;
-  std::string coordinate_system;
-  std::string payload_layout;
-  double mdm_dipole_probe;
-  double mdm_multipole_probe;
-  double aperture_radius_cm;
-  std::map<std::string, std::string> extra;
-};
-```
-
-Common header keys:
-
-| Key | Meaning |
-| --- | --- |
-| `version` | Format version. |
-| `magnet` | Magnet or region name. |
-| `units_length` | Usually `cm`. |
-| `units_field` | Usually `Tesla`. |
-| `nx`, `ny`, `nz` | Grid dimensions. |
-| `origin_cm` | Local coordinate of node `(0,0,0)`. |
-| `spacing_cm` | Uniform grid spacing. |
-| `axis_definition` | Short human-readable axis description. |
-| `coordinate_system` | Local coordinate-system note. |
-| `payload_layout` | Should state component-major, x-fastest. |
-| `sampling_method` | `direct_raytrace`. |
-| `masked_zero_region` | Whether zero values encode outside-region masking. |
-| `mdm_dipole_probe` | Dipole probe setting used to generate the map. |
-| `mdm_multipole_probe` | Multipole probe setting used to generate the map. |
-| `requested_spacing_mm` | Requested generator spacing. |
-
-Unknown keys are preserved in `extra`.
-
-## Multipole Headers
-
-Multipole-specific fields include:
-
-| Key | Meaning |
-| --- | --- |
-| `multipole_aperture_radius_cm` | Circular aperture used by the map. |
-| `multipole_transition_planes_cm` | Longitudinal fringe/transition plane metadata. |
-
-The multipole map frame is centered on the magnet with beam direction along local `z`.
-
-## Dipole Headers
-
-Dipole-specific fields include:
-
-| Key | Meaning |
-| --- | --- |
-| `dipole_region` | `entrance`, `sector`, or `exit`. |
-| `field_component_frame` | Frame of stored vector components. |
-| `raytrace_sector_frame` | Notes on the RAYTRACE sector coordinate relation. |
-| `dipole_gap_cm` | Vertical gap used for map bounds. |
-| `dipole_reference_radius_cm` | Reference bend radius. |
-| `dipole_sector_angle_deg` | Nominal sector bend angle. |
-| `dipole_alpha_deg` | Entrance edge angle. |
-| `dipole_beta_deg` | Exit edge angle. |
-| `dipole_z11_cm`, `dipole_z12_cm` | Entrance fringe limits. |
-| `dipole_z21_cm`, `dipole_z22_cm` | Exit fringe limits. |
-| `dipole_strip_half_width_cm` | Radial half-width of sector strip. |
-
-The dipole local frame is entrance-centered:
-
-```text
-+z incoming beam
-+x left in top view
-+y up
-bend toward -x
-```
-
-## Masked Zero Regions
-
-The maps are stored on rectangular grids. Points outside the physical region are written as zero so the consumer can use dense arrays.
-
-Examples:
-- multipole nodes outside the circular aperture return zero
-- dipole split maps only represent their own entrance, sector, or exit region
-- outside the stored grid, `MdmFieldMap::FieldTesla` returns zero
-
-Zero masking is not a smoothing operation. Stored nonzero nodes are direct RAYTRACE field samples.
+An external consumer is responsible for transforming its global position into the documented map frame and rotating the returned local field vector back to its own frame.

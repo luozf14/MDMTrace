@@ -1,10 +1,10 @@
+#include "MdmConfig.h"
 #include "MdmRayScan.h"
 #include "MdmIonConfig.h"
 #include "MdmTrace.h"
 #include "json.h"
 
 #include <cstdio>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -17,7 +17,7 @@ double GetDouble(const Json::Value& config, const char* key) {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int Run(int argc, char* argv[]) {
   if (argc < 2) {
     std::cout << "Please specify the config file.\n"
               << "Usage: ./MdmTraceExample <config-file>" << std::endl;
@@ -25,19 +25,15 @@ int main(int argc, char* argv[]) {
   }
 
   const std::string configFileName = argv[1];
-  std::ifstream configStream(configFileName.c_str());
-  if (!configStream) {
-    std::cerr << "ERROR: Unable to open config file: " << configFileName
-              << std::endl;
-    return 1;
-  }
-
-  Json::Value config;
-  configStream >> config;
-  const bool usingProbe =
-      config.isMember("usingProbe") && config["usingProbe"].asBool();
+  const Json::Value config = mdm::ReadConfig(configFileName);
+  const bool usingProbe = mdm::RequireBoolean(config, "usingProbe");
   const MdmIon ion = mdm::ParseScatteredIon(config);
   const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(config);
+  const mdm::RayScanCounts counts = mdm::CountRayScan(config, rays.size());
+  std::cerr << "Energy values: " << counts.energies << "\n"
+            << "Horizontal-angle values: " << counts.horizontalAngles << "\n"
+            << "Vertical-angle values: " << counts.verticalAngles << "\n"
+            << "Total rays: " << counts.rays << "\n";
 
   MdmTrace trace;
   trace.SetMdmAngle(GetDouble(config, "mdmAngle"));
@@ -67,4 +63,13 @@ int main(int argc, char* argv[]) {
                 ray.xDeg, ray.yDeg, ray.energyMeV, x1, y1, angX1, angY1);
   }
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+  try {
+    return Run(argc, argv);
+  } catch (const std::exception& error) {
+    std::cerr << "ERROR: " << error.what() << "\n";
+    return 1;
+  }
 }

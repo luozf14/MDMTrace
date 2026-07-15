@@ -329,6 +329,16 @@ void MdmFieldMapTrace::ValidateLoadedMaps() const {
   mapsToCheck.push_back(&dipoleSectorMap_);
   mapsToCheck.push_back(&dipoleExitMap_);
 
+  const char* expectedRoles[] = {"Multipole", "DipoleEntrance",
+                                 "DipoleSector", "DipoleExit"};
+  for (std::size_t i = 0; i < mapsToCheck.size(); ++i) {
+    if (mapsToCheck[i]->h.magnet != expectedRoles[i]) {
+      throw std::runtime_error(
+          std::string("Field-map role mismatch: expected ") +
+          expectedRoles[i] + ", found " + mapsToCheck[i]->h.magnet);
+    }
+  }
+
   const double referenceDipoleProbe = mapsToCheck.front()->h.mdm_dipole_probe;
   const double referenceMultipoleProbe =
       mapsToCheck.front()->h.mdm_multipole_probe;

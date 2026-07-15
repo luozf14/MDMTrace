@@ -1,34 +1,44 @@
-// Self-contained angle/energy scan for validation and ROOT comparison.
+// Self-contained energy and angle scan used by Compare
+// and by the optional scan mode of the two trace examples.
+
 {
-    "usingProbe"          : 1,
-    "mdmAngle"            : 0,
-    "mdmDipoleField"      : 2417.50,
-    "mdmDipoleProbe"      : 2338.00,
-    "mdmMultipoleProbe"   : 1659.98,
+  "usingProbe": true,
 
-    "scatteredIon": {
-        "massNumber"   : 12,
-        "atomicNumber" : 6,
-        "chargeState"  : 5
-    },
-    "scatteredEnergy"     : 15,
-    "scatteredEnergyGrid" : {
-        "eMin"  : 13,
-        "eMax"  : 17,
-        "eStep" : 0.5
-    },
+  "mdmAngle": 0.0,                 // deg
 
-    "scatteredAngleGrid"  : {
-        "xMin"  : -1.9,
-        "xMax"  : 1.9,
-        "xStep" : 0.1,
-        "yMin"  : -1.9,
-        "yMax"  : 1.9,
-        "yStep" : 0.1
-    },
+  "mdmDipoleField": 2417.50,       // Gauss; used only when usingProbe is false
+  "mdmDipoleProbe": 2338.00,       // Gauss
+  "mdmMultipoleProbe": 1659.98,    // Gauss
 
-    "multipoleMapPath"     : "Multipole.bin",
-    "dipoleEntranceMapPath": "DipoleEntrance.bin",
-    "dipoleSectorMapPath"  : "DipoleSector.bin",
-    "dipoleExitMapPath"    : "DipoleExit.bin"
+  "scatteredIon": {
+    "massNumber": 12,              // A
+    "atomicNumber": 6,             // Z
+    "chargeState": 5               // Q, in units of e
+  },
+
+  "scatteredEnergy": 15.0,         // MeV; reference value
+
+  "scatteredEnergyGrid": {
+    "eMin": 13.0,                  // MeV
+    "eMax": 17.0,                  // MeV
+    "eStep": 0.5                   // MeV
+  },
+
+  "scatteredAngleGrid": {
+    "xMin": -1.9,                  // deg
+    "xMax": 1.9,                   // deg
+    "xStep": 0.1,                  // deg
+
+    "yMin": -1.9,                  // deg
+    "yMax": 1.9,                   // deg
+    "yStep": 0.1                   // deg
+  },
+
+  // 0 means use the program's automatic CPU-count choice.
+  "compareProcesses": 0,
+
+  "multipoleMapPath": "Multipole.bin",
+  "dipoleEntranceMapPath": "DipoleEntrance.bin",
+  "dipoleSectorMapPath": "DipoleSector.bin",
+  "dipoleExitMapPath": "DipoleExit.bin"
 }

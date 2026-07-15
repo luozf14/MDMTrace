@@ -1,5 +1,6 @@
 #include "MdmFieldMap.h"
 #include "MdmFieldMapInterop.h"
+#include "MdmConfig.h"
 
 #include <algorithm>
 #include <array>
@@ -163,28 +164,11 @@ void EnsureParentDirectory(const std::filesystem::path& path) {
   }
 }
 
-std::filesystem::path WithSuffixBeforeExtension(const std::filesystem::path& path,
-                                                const std::string& suffix) {
-  const std::string stem = path.stem().string();
-  const std::string extension = path.extension().string();
-  if (extension.empty()) {
-    return path.parent_path() / (path.filename().string() + suffix);
-  }
-  return path.parent_path() / (stem + suffix + extension);
-}
-
 GeneratorConfig ReadConfig(const std::string& path) {
-  std::ifstream stream(path.c_str());
-  if (!stream) {
-    throw std::runtime_error("Unable to open config file: " + path);
-  }
-
-  Json::Value config;
-  stream >> config;
+  const Json::Value config = mdm::ReadConfig(path);
 
   GeneratorConfig result;
-  result.usingProbe =
-      config.isMember("usingProbe") && config["usingProbe"].asBool();
+  result.usingProbe = mdm::RequireBoolean(config, "usingProbe");
   result.mdmDipoleField =
       config.isMember("mdmDipoleField") ? config["mdmDipoleField"].asDouble()
                                         : 0.0;
@@ -199,10 +183,13 @@ GeneratorConfig ReadConfig(const std::string& path) {
     throw std::runtime_error(
         "Missing required generator config key: fieldMapSpacingMm");
   }
+  if (!config["fieldMapSpacingMm"].isNumeric()) {
+    throw std::runtime_error("fieldMapSpacingMm must be numeric. Unit: mm.");
+  }
   result.fieldMapSpacingMm = config["fieldMapSpacingMm"].asDouble();
   if (result.fieldMapSpacingMm <= 0.0) {
     throw std::runtime_error(
-        "Invalid fieldMapSpacingMm: expected a positive value in mm");
+        "fieldMapSpacingMm must be greater than zero. Unit: mm.");
   }
 
   if (config.isMember("outputDirectory")) {
@@ -212,26 +199,14 @@ GeneratorConfig ReadConfig(const std::string& path) {
     result.multipoleOutput = config["multipoleOutput"].asString();
   }
 
-  const bool hasSplitOutputs =
-      config.isMember("dipoleEntranceOutput") ||
-      config.isMember("dipoleSectorOutput") ||
-      config.isMember("dipoleExitOutput");
-
-  if (hasSplitOutputs) {
-    if (config.isMember("dipoleEntranceOutput")) {
-      result.dipoleEntranceOutput = config["dipoleEntranceOutput"].asString();
-    }
-    if (config.isMember("dipoleSectorOutput")) {
-      result.dipoleSectorOutput = config["dipoleSectorOutput"].asString();
-    }
-    if (config.isMember("dipoleExitOutput")) {
-      result.dipoleExitOutput = config["dipoleExitOutput"].asString();
-    }
-  } else if (config.isMember("dipoleOutput")) {
-    const std::filesystem::path base = config["dipoleOutput"].asString();
-    result.dipoleEntranceOutput = WithSuffixBeforeExtension(base, "Entrance");
-    result.dipoleSectorOutput = WithSuffixBeforeExtension(base, "Sector");
-    result.dipoleExitOutput = WithSuffixBeforeExtension(base, "Exit");
+  if (config.isMember("dipoleEntranceOutput")) {
+    result.dipoleEntranceOutput = config["dipoleEntranceOutput"].asString();
+  }
+  if (config.isMember("dipoleSectorOutput")) {
+    result.dipoleSectorOutput = config["dipoleSectorOutput"].asString();
+  }
+  if (config.isMember("dipoleExitOutput")) {
+    result.dipoleExitOutput = config["dipoleExitOutput"].asString();
   }
 
   return result;
@@ -308,7 +283,7 @@ std::filesystem::path ResolveOutputPath(const std::filesystem::path& base,
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int Run(int argc, char* argv[]) {
   if (argc < 2) {
     std::cout << "Usage: ./MdmFieldMapGenerator <config-file>" << std::endl;
     return 0;
@@ -487,4 +462,13 @@ int main(int argc, char* argv[]) {
     }
 
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+  try {
+    return Run(argc, argv);
+  } catch (const std::exception& error) {
+    std::cerr << "ERROR: " << error.what() << "\n";
+    return 1;
+  }
 }

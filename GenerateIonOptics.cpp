@@ -1,3 +1,4 @@
+#include "MdmConfig.h"
 #include "MdmFieldMapTrace.h"
 #include "MdmIonConfig.h"
 #include "json.h"
@@ -133,16 +134,6 @@ struct LongitudinalReference {
   double gamma = 1.0;
 };
 
-Json::Value ReadJson(const std::string& path) {
-  std::ifstream stream(path.c_str());
-  if (!stream) {
-    throw std::runtime_error("Cannot open config: " + path);
-  }
-  Json::Value config;
-  stream >> config;
-  return config;
-}
-
 double GetDouble(const Json::Value& value,
                  const char* key,
                  double fallback = 0.0) {
@@ -160,14 +151,7 @@ std::string GetString(const Json::Value& value,
 unsigned int GetUnsigned(const Json::Value& value,
                          const char* key,
                          unsigned int fallback = 0) {
-  if (!value.isObject() || !value.isMember(key)) {
-    return fallback;
-  }
-  const int raw = value[key].asInt();
-  if (raw < 0) {
-    throw std::runtime_error(std::string(key) + " must be non-negative");
-  }
-  return static_cast<unsigned int>(raw);
+  return mdm::GetNonnegativeInteger(value, key, fallback);
 }
 
 std::vector<double> BuildAxis(double minValue,
@@ -212,7 +196,7 @@ Axis ParseAxis(const Json::Value& grid,
 
 Config ParseConfig(const Json::Value& json) {
   Config cfg;
-  cfg.usingProbe = json.isMember("usingProbe") && json["usingProbe"].asBool();
+  cfg.usingProbe = mdm::RequireBoolean(json, "usingProbe");
   cfg.mdmAngleDeg = GetDouble(json, "mdmAngle");
   cfg.dipoleField = GetDouble(json, "mdmDipoleField");
   cfg.dipoleProbe = GetDouble(json, "mdmDipoleProbe");
@@ -232,6 +216,9 @@ IonOpticsConfig ParseIonOpticsConfig(const Json::Value& json) {
   cfg.referenceEnergyMeV = GetDouble(json, "scatteredEnergy");
 
   const Json::Value& optics = json["ionOptics"];
+  if (!optics.isObject()) {
+    throw std::runtime_error("ionOptics must be an object");
+  }
   cfg.method = GetString(optics, "method", "fit");
   cfg.order = GetUnsigned(optics, "order", 2);
   const Json::Value& reference = optics["reference"];
@@ -962,9 +949,9 @@ void WriteReport(std::ostream& out,
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int Run(int argc, char* argv[]) {
   const std::string configPath = argc > 1 ? argv[1] : DefaultConfigPath();
-  const Json::Value json = ReadJson(configPath);
+  const Json::Value json = mdm::ReadConfig(configPath);
   const Config cfg = ParseConfig(json);
   const IonOpticsConfig optics = ParseIonOpticsConfig(json);
   CheckConfig(cfg, optics);
@@ -1005,4 +992,13 @@ int main(int argc, char* argv[]) {
   WriteReport(std::cout, configPath, cfg, optics, referenceResult.output,
               map, stats);
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+  try {
+    return Run(argc, argv);
+  } catch (const std::exception& error) {
+    std::cerr << "ERROR: " << error.what() << "\n";
+    return 1;
+  }
 }

@@ -1,61 +1,84 @@
-// Main MDM setup used by the generator, trace examples, and ion-optics fit.
-// Extra keys are ignored by tools that do not need them.
+// Main MDM configuration.
+// Used by MdmTraceExample, MdmFieldMapGenerator,
+// MdmFieldMapTraceExample, and GenerateIonOptics.
+// Extra keys that are irrelevant to one executable may be ignored by that executable.
+
 {
-    "usingProbe"          : 1,
-    "mdmAngle"            : 0,
-    "mdmDipoleField"      : 2417.50,
-    "mdmDipoleProbe"      : 2338.00,
-    "mdmMultipoleProbe"   : 1659.98,
+  // Magnet-setting mode.
+  // true  -> use mdmDipoleProbe and mdmMultipoleProbe.
+  // false -> use mdmDipoleField and derive both probe values
+  //          with the calibration used in the source.
+  "usingProbe": true,
 
-    "scatteredIon": {
-        "massNumber"   : 12,
-        "atomicNumber" : 6,
-        "chargeState"  : 5
+  "mdmAngle": 0.0,                 // deg
+
+  "mdmDipoleField": 2417.50,       // Gauss; used only when usingProbe is false
+  "mdmDipoleProbe": 2338.00,       // Gauss; used only when usingProbe is true
+  "mdmMultipoleProbe": 1659.98,    // Gauss; used only when usingProbe is true
+
+  "scatteredIon": {
+    "massNumber": 12,              // A
+    "atomicNumber": 6,             // Z
+    "chargeState": 5               // Q, in units of e
+  },
+
+  "scatteredEnergy": 15.0,         // MeV kinetic energy
+  "scatteredAngles": [0.0],        // deg; horizontal input angles
+
+  "fieldMapSpacingMm": 2.5,        // mm
+
+  // Generated field-map files. Relative paths are interpreted
+  // according to the current executable behavior, normally from build/.
+  "outputDirectory": ".",
+  "multipoleOutput": "Multipole.bin",
+  "dipoleEntranceOutput": "DipoleEntrance.bin",
+  "dipoleSectorOutput": "DipoleSector.bin",
+  "dipoleExitOutput": "DipoleExit.bin",
+
+  // Existing maps used by field-map transport.
+  "multipoleMapPath": "Multipole.bin",
+  "dipoleEntranceMapPath": "DipoleEntrance.bin",
+  "dipoleSectorMapPath": "DipoleSector.bin",
+  "dipoleExitMapPath": "DipoleExit.bin",
+
+  "ionOptics": {
+    "reference": {
+      "xMm": 0.0,                  // mm
+      "thetaXMrad": 0.0,           // mrad
+      "yMm": 0.0,                  // mm
+      "thetaYMrad": 0.0,           // mrad
+      "energyMeV": 15.0            // MeV kinetic energy
     },
-    "scatteredEnergy"     : 15,
-    "scatteredAngles"     : [0],
 
-    "fieldMapSpacingMm"   : 2.5,
-    "outputDirectory"     : ".",
-    "multipoleOutput"     : "Multipole.bin",
-    "dipoleEntranceOutput": "DipoleEntrance.bin",
-    "dipoleSectorOutput"  : "DipoleSector.bin",
-    "dipoleExitOutput"    : "DipoleExit.bin",
+    "method": "fit",
+    "order": 1,                    // supported polynomial order: 1 through 5
+    "threads": 0,                  // 0 means use the program's automatic choice
+    "maxRays": 100000000,          // integer ray limit
 
-    "multipoleMapPath"     : "Multipole.bin",
-    "dipoleEntranceMapPath": "DipoleEntrance.bin",
-    "dipoleSectorMapPath"  : "DipoleSector.bin",
-    "dipoleExitMapPath"    : "DipoleExit.bin",
+    "fitGrid": {
+      "xMinMm": -5.0,              // mm
+      "xMaxMm": 5.0,               // mm
+      "xStepMm": 1.0,              // mm
 
-    "ionOptics": {
-        "reference": {
-            "xMm"        : 0.0,
-            "thetaXMrad" : 0.0,
-            "yMm"        : 0.0,
-            "thetaYMrad" : 0.0,
-            "energyMeV"  : 15.0
-        },
-        "method": "fit",
-        "order": 1,
-        "threads": 0,
-        "maxRays": 1e8,
-        "fitGrid": {
-            "xMinMm"         : -5.0,
-            "xMaxMm"         :  5.0,
-            "xStepMm"        :  1.0,
-            "thetaXMinMrad"  : -34.5,
-            "thetaXMaxMrad"  :  34.5,
-            "thetaXStepMrad" :  2.5,
-            "yMinMm"         : -5.0,
-            "yMaxMm"         :  5.0,
-            "yStepMm"        :  1.0,
-            "thetaYMinMrad"  : -34.5,
-            "thetaYMaxMrad"  :  34.5,
-            "thetaYStepMrad" :  2.5,
-            "deltaMin"       : -5,
-            "deltaMax"       :  5,
-            "deltaStep"      :  0.25
-        },
-        "outputPath": "IonOpticsMatrix.txt"
-    }
+      "thetaXMinMrad": -34.5,      // mrad
+      "thetaXMaxMrad": 34.5,       // mrad
+      "thetaXStepMrad": 2.5,       // mrad
+
+      "yMinMm": -5.0,              // mm
+      "yMaxMm": 5.0,               // mm
+      "yStepMm": 1.0,              // mm
+
+      "thetaYMinMrad": -34.5,      // mrad
+      "thetaYMaxMrad": 34.5,       // mrad
+      "thetaYStepMrad": 2.5,       // mrad
+
+      // Percent momentum deviation:
+      // delta = 100 * (p - p0) / p0
+      "deltaMin": -5.0,            // % momentum deviation
+      "deltaMax": 5.0,             // % momentum deviation
+      "deltaStep": 0.25            // % momentum deviation
+    },
+
+    "outputPath": "IonOpticsMatrix.txt"
+  }
 }

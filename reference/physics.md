@@ -1,123 +1,111 @@
-# Physics Conventions
+# Physics conventions
 
-This project models the current MDM spectrometer deck, not a generic RAYTRACE beamline. The goal is to reproduce the active MDM transport and export magnetic field maps for Geant4 use.
+MDMTrace models the active MDM spectrometer deck. It is useful independently for field tuning, legacy tracing, map generation, standalone map tracing, comparison, and ion-optics fitting.
 
-## Beamline Sequence
+## Verified numerical conventions
 
-The implemented validation sequence is:
+- nominal dipole sector angle: **100 degrees**;
+- dipole reference radius: **160 cm**;
+- RAYTRACE speed-of-light convention: `c = 3.0e10 cm/s`;
+- field-map positions: cm;
+- field-map magnetic fields: Tesla;
+- multipole RK4 integration step: 0.1 cm;
+- dipole RK4 integration step: 0.1 cm;
+- plane-crossing tolerance: `1.0e-8 cm`;
+- maximum magnetic integration steps per region: 200000;
+- plane-crossing refinement steps: 60;
+- relative map-probe comparison tolerance: `2.0e-6` times `max(1, |a|, |b|)`.
+
+The 160 value is a radius in centimetres, not an angle. The sector angle is 100 degrees.
+
+## Active beamline
+
+The standalone field-map transport follows the active sequence:
 
 ```text
-DRIF 63.5
-entrance COLL
-DRIF 18.075
+63.5 cm drift
+entrance collimator
+18.075 cm drift
 entrance multipole
-dipole
-exit COLL
-DRIF 96.13
+dipole entrance fringe, sector, and exit fringe
+36.7 cm zero-field second-multipole drift
+exit collimator
+96.13 cm final drift
 ```
 
-The numerical drift lengths, apertures, fringe parameters, and magnet geometry are read from or copied from the active `dat/rayin.dat` deck. The second multipole is not treated as an active field element.
+The current aperture values and zero-field drifts are copied from `dat/rayin.dat` into the transport source. The second multipole remains disabled: it contributes no magnetic field and has no generated map.
 
-## Magnet Settings
+## Magnet settings
 
-Hall-probe mode:
+Probe mode uses:
 
 ```text
-B_dipole[T] = mdmDipoleProbe * 1.034e-4
+B_dipole [T] = mdmDipoleProbe [Gauss] * 1.034e-4
 ```
 
-Field mode:
+Field mode derives the map settings as:
 
 ```text
 dipoleProbe = mdmDipoleField / 1.034
 multipoleProbe = dipoleProbe * 0.71
 ```
 
-The multipole strengths are then set from the same calibration ratios used by `MdmTrace`.
+The multipole strengths use the existing calibration ratios in `MdmTrace`. Loaded maps are never rescaled silently. All four maps must contain mutually consistent probe metadata, and the requested probes must match within the source tolerance above.
 
-All tools follow the same `usingProbe` convention:
-- `usingProbe=true`: use `mdmDipoleProbe` and `mdmMultipoleProbe`
-- `usingProbe=false`: use `mdmDipoleField` and derive the probe values
+## Transport
 
-Field-map tracers reject maps if the requested magnetic setting does not match the metadata stored in the map headers.
+The legacy reference is MIT RAYTRACE through `MdmTrace`. The map generator links that Fortran-backed library and samples its magnetic-field routines directly.
 
-## Transport Model
+The standalone map reader and map transport are C++ and do not call the Fortran transport. They use straight propagation in zero-field drifts, aperture stops at the copied collimators, and fixed-step RK4 integration through trilinearly interpolated map fields.
 
-The legacy reference is MIT RAYTRACE through `MdmTrace`.
-
-The field-map tracer uses the same visible beamline logic but does not call Fortran:
-- straight-line transport in drifts
-- aperture stops at collimators
-- RK4 magnetic integration through generated field maps
-- stopped rays receive the same sentinel-style output used by the legacy examples
-
-Particle speed is computed relativistically from kinetic energy:
+For kinetic energy `T` and transported rest mass `m`:
 
 ```text
-m = ionMassMeV
-v/c = sqrt((2*m + T) * T) / (m + T)
+p = sqrt((2*m + T) * T)
+v/c = p / (m + T)
 ```
 
-For `scatteredIon`, `ionMassMeV` is the AME2020 neutral atomic mass minus `chargeState` electron masses:
+The transported mass is the AME2020 neutral atomic mass minus `Q` electron masses:
 
 ```text
-ionMassMeV = neutralAtomicMassU * 931.49410242 - chargeState * 0.510998950
+ionMassMeV = neutralAtomicMassU * 931.49410242 - Q * 0.510998950
 ```
 
-The charge state is also the magnetic charge used in the Lorentz force.
+The transport is magnetic only; it has no energy-loss model.
 
-The transport is magnetic only. There is no energy loss model.
+## Map coordinates
 
-## Coordinates
+The multipole map is centred on the magnet. Local `+z` follows the beam, while `x` and `y` are transverse.
 
-### Multipole Map
-
-The multipole map uses a centered local frame:
+The dipole is split into entrance-fringe, sector, and exit-fringe maps. The entrance-centred physical convention is:
 
 ```text
-origin: magnet center
-z: beam axis
-x,y: transverse axes
-beam direction: -z to +z
-```
-
-This follows the RAYTRACE-style local magnet convention.
-
-### Dipole Maps
-
-The dipole maps use an entrance-centered frame chosen for Geant4 convenience:
-
-```text
-origin: dipole entrance center
-+z: incoming beam direction
-+x: left in the top view
++z: incoming beam
++x: left in top view
 +y: upward
 central trajectory: bends toward -x
 ```
 
-The dipole is split into:
-- entrance fringe
-- sector body
-- exit fringe
+The sector map stores `(dr, y, s)` in cm, where `dr = r - 160 cm` and `s = 160 cm * theta`. Stored vector components remain in the dipole-local Cartesian frame.
 
-The split maps make the fringe boundaries explicit and avoid forcing one large rectangular map to describe regions with different natural coordinates.
+## Ion-optics coordinates
 
-## Second Multipole
-
-The second multipole is ignored as a magnetic field source in this project. It may still appear in historical deck geometry, but no second-multipole map is generated and no second-multipole field is applied by the field-map tracer.
-
-## Longitudinal Coordinate `L`
-
-Ion-optics output uses a LISE-style 6D vector:
+The phase-space vector is exactly:
 
 ```text
 [x mm, thetaX mrad, y mm, thetaY mrad, L mm, deltaP/P0 %]
 ```
 
-`L` is derived from time-of-flight relative to the reference ray:
+Momentum deviation is a percentage:
 
 ```text
-L[mm] = -v0_ref * (tof - tof_ref) / gamma0_ref^2 * 10
+deltaP/P0 [%] = 100 * (p - p0) / p0
 ```
 
-The sign convention means later arrival gives negative `L`. Input `L` is a formal coordinate in the fitted transfer map; the static magnetic transport does not change an initial time offset, so `L -> L` is fixed to 1.
+The longitudinal output coordinate is calculated from time of flight:
+
+```text
+L [mm] = -v0 * (tof - tof0) / gamma0^2 * 10
+```
+
+Later arrival therefore gives negative `L`. Input `L` is a formal coordinate, and the static transport keeps the `L -> L` identity term equal to one.

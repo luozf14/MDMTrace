@@ -1,14 +1,15 @@
-# MdmTrace
+# MDMTrace
 
-MdmTrace is a C++ interface around the MIT RAYTRACE code plus MDM-specific tools for generating magnetic field maps, validating them against the legacy transport, and fitting ion-optical transfer maps.
+MDMTrace is a standalone physics program for the current MDM spectrometer. It combines the MIT RAYTRACE transport with small C++ tools for:
 
-The normal goal of this project is to export field maps that can be used in a Geant4 model of the MDM spectrometer. The active RAYTRACE deck is `dat/rayin.dat`.
+- tuning the MDM dipole field;
+- tracing rays with the legacy RAYTRACE model;
+- generating magnetic-field maps;
+- tracing rays with the standalone field-map transport;
+- comparing legacy and field-map transport;
+- fitting ion-optical transfer maps.
 
-Current model:
-- entrance multipole on
-- dipole on
-- second multipole ignored as a field element
-- field-map transport uses generated maps plus hard-coded zero-field drifts and apertures from the deck
+The active RAYTRACE deck is `dat/rayin.dat`. The active model includes the entrance multipole and dipole; the second multipole remains disabled. The four generated maps may be used directly by MDMTrace or by another consumer such as MdmSim.
 
 ## Build
 
@@ -17,11 +18,13 @@ cmake -S . -B build
 cmake --build build -j4
 ```
 
-ROOT is required for `Compare` and `GenerateIonOptics`. The field-map loader and field-map transport code do not depend on ROOT or Fortran.
+C++17 and the legacy Fortran compiler flags are retained. ROOT is needed only for `Compare` and `GenerateIonOptics`. If ROOT is absent, CMake reports that those two targets are skipped and still builds `FindMdmField`, `MdmTraceExample`, `MdmFieldMapGenerator`, and `MdmFieldMapTraceExample`.
 
-## Quickstart
+`MdmFieldMapGenerator` links the legacy Fortran-backed `MdmTrace` library because it samples the RAYTRACE field routines. `MdmFieldMapTraceExample` links only the standalone C++ map reader and transport; it does not link the legacy Fortran transport.
 
-Run the normal field-map and validation workflow from `build/`:
+## Quick start
+
+Run normal commands from `build/`:
 
 ```bash
 cd build
@@ -30,48 +33,43 @@ cd build
 ./MdmTraceExample ../config/MDM.json
 ./MdmFieldMapTraceExample ../config/MDM.json
 ./Compare
+./GenerateIonOptics ../config/MDM.json
 ```
 
-Use `FindMdmField` first when you need a dipole setting for a new ion. Put the tuned field or equivalent probe values into `config/MDM.json`, then generate maps and validate transport.
+The generator preserves the established outputs and metadata headers:
 
-The generator writes:
-- `Multipole.bin`
-- `DipoleEntrance.bin`
-- `DipoleSector.bin`
-- `DipoleExit.bin`
+```text
+Multipole.bin
+DipoleEntrance.bin
+DipoleSector.bin
+DipoleExit.bin
+```
 
-The trace examples print the same final-result line format so the legacy RAYTRACE result and field-map result can be compared directly.
+Relative map paths and output paths are resolved from the process working directory. Running from `build/` therefore creates and reads the four maps there.
 
-## Visualization
+## Configuration
 
-<img src="visual/multipole_slice.png" alt="Multipole field slices" width="760">
-<img src="visual/dipole_slice.png" alt="Dipole field slices" width="500">
+The three supported configuration files are:
 
+- `config/MDM.json`: normal tracing, generation, and ion-optics fitting;
+- `config/MDMScan.json`: self-contained energy/angle scans and comparison;
+- `config/MDMFindField.json`: field tuning.
 
-ROOT plotting macros and figure notes are documented in [Field-Map Visualization](reference/visualization.md).
+They are JSON-with-comments files and retain the `.json` extension. Comments beside dimensional values state their units and physics meaning. `usingProbe` must be the JSON Boolean `true` or `false`; numeric `0` and `1` are rejected.
 
-## Config Files
+The ion-optics phase-space vector is exactly:
 
-There are three self-contained JSON configs:
+```text
+[x mm, thetaX mrad, y mm, thetaY mrad, L mm, deltaP/P0 %]
+```
 
-- `config/MDM.json`: normal setup. Used by `MdmFieldMapGenerator`, `MdmTraceExample`, `MdmFieldMapTraceExample`, and `GenerateIonOptics`.
-- `config/MDMScan.json`: larger angle/energy scan. Used by `Compare` by default and by optional scan runs of the two trace examples.
-- `config/MDMFindField.json`: field-tuning setup for `FindMdmField`.
+Here `deltaP/P0` is percent momentum deviation, not a unitless fraction.
 
-Important conventions:
-- JSON keys keep the original `mdm...` names, for example `mdmDipoleProbe` and `mdmDipoleField`.
-- `scatteredIon` defines the isotope and transported charge state; the tools read AME2020 atomic masses from `dat/mass_1.mas20.txt`.
-- If `usingProbe` is true, tools use `mdmDipoleProbe` and `mdmMultipoleProbe`.
-- If `usingProbe` is false, tools use `mdmDipoleField` and derive the equivalent probes with the project calibration rules.
-- Relative map paths are resolved from the current working directory, so the usual workflow is to run tools from `build/`.
+## Documentation
 
-## Details
-
-Detailed documentation is split into:
-
-- [Executables](reference/executables.md): command-line usage and outputs for the generator, trace examples, comparison tool, ion-optics fitter, and field tuner.
-- [Configuration](reference/configuration.md): JSON keys, scan-grid rules, map paths, ion-optics settings, and field-finder settings.
-- [Physics Conventions](reference/physics.md): beamline sequence, magnet-setting convention, coordinate systems, transport model, second-multipole behavior, and `L` definition.
-- [Field Map Format](reference/field-map-format.md): binary file layout, header keys, `MdmFieldMap` usage notes, split-dipole metadata, and masked-zero regions.
-- [Field-Map Visualization](reference/visualization.md): ROOT macros and example figures.
-- [Validation Workflow](reference/validation.md): legacy-vs-field-map comparison steps, ROOT comparison plots, map compatibility checks, and known limitations.
+- [Configuration](reference/configuration.md)
+- [Executables](reference/executables.md)
+- [Physics conventions](reference/physics.md)
+- [Field-map format](reference/field-map-format.md)
+- [Validation](reference/validation.md)
+- [Field-map visualization](reference/visualization.md)

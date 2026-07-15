@@ -1,21 +1,28 @@
-// Tune one scalar MDM dipole field for a given ion using legacy RAYTRACE.
-{
-    "mdmAngle"        : 0,
-    "scatteredIon": {
-        "massNumber"   : 12,
-        "atomicNumber" : 6,
-        "chargeState"  : 5
-    },
-    "scatteredEnergy" : 15,
+// Tune one scalar MDM dipole field for a selected ion
+// using the legacy RAYTRACE transport.
 
-    "fieldFinder": {
-        "inputAngleXDeg"          : 0.0,
-        "inputAngleYDeg"          : 0.0,
-        "positionScaleCm"         : 0.1,
-        "angleScaleDeg"           : 0.1,
-        "searchHalfWidthFraction" : 0.25,
-        "coarseSamples"           : 101,
-        "fieldToleranceGauss"     : 0.001,
-        "maxIterations"           : 1e3
-    }
+{
+  "mdmAngle": 0.0,                 // deg
+
+  "scatteredIon": {
+    "massNumber": 12,              // A
+    "atomicNumber": 6,             // Z
+    "chargeState": 5               // Q, in units of e
+  },
+
+  "scatteredEnergy": 15.0,         // MeV kinetic energy
+
+  "fieldFinder": {
+    "inputAngleXDeg": 0.0,         // deg
+    "inputAngleYDeg": 0.0,         // deg
+
+    // Scale factors used in the weighted residual.
+    "positionScaleCm": 0.1,        // cm
+    "angleScaleDeg": 0.1,          // deg
+
+    "searchHalfWidthFraction": 0.25,
+    "coarseSamples": 101,          // integer sample count
+    "fieldToleranceGauss": 0.001,  // Gauss
+    "maxIterations": 1000          // integer
+  }
 }

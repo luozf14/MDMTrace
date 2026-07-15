@@ -1,3 +1,4 @@
+#include "MdmConfig.h"
 #include "MdmFieldMapTrace.h"
 #include "MdmIonConfig.h"
 #include "MdmRayScan.h"
@@ -53,6 +54,7 @@ struct Result {
   double y = 0.0;
   double ax = 0.0;
   double ay = 0.0;
+  bool stopped = false;
 };
 
 struct Row {
@@ -74,14 +76,13 @@ struct LinearFit {
   double r2 = 0.0;
 };
 
-Json::Value ReadJson(const std::string& path) {
-  std::ifstream stream(path.c_str());
-  if (!stream) {
-    throw std::runtime_error("Cannot open config: " + path);
-  }
-  Json::Value config;
-  stream >> config;
-  return config;
+constexpr double kStoppedPositionCm = 1.0e9;
+
+bool IsStopped(const Result& result) {
+  return !std::isfinite(result.x) || !std::isfinite(result.y) ||
+         !std::isfinite(result.ax) || !std::isfinite(result.ay) ||
+         std::abs(result.x) >= kStoppedPositionCm ||
+         std::abs(result.y) >= kStoppedPositionCm;
 }
 
 double GetDouble(const Json::Value& c, const char* key, double fallback = 0.0) {
@@ -96,7 +97,7 @@ std::string GetString(const Json::Value& c,
 
 Config ParseConfig(const Json::Value& c) {
   Config cfg;
-  cfg.usingProbe = c.isMember("usingProbe") && c["usingProbe"].asBool();
+  cfg.usingProbe = mdm::RequireBoolean(c, "usingProbe");
   cfg.mdmAngle = GetDouble(c, "mdmAngle");
   cfg.dipoleField = GetDouble(c, "mdmDipoleField");
   cfg.dipoleProbe = GetDouble(c, "mdmDipoleProbe");
@@ -132,6 +133,7 @@ Result Run(MdmTrace& trace, const mdm::RayInput& ray) {
   trace.SetScatteredEnergy(ray.energyMeV);
   trace.SendRay();
   trace.GetPositionAngleFirstWire(r.x, r.y, r.ax, r.ay);
+  r.stopped = IsStopped(r);
   return r;
 }
 
@@ -141,6 +143,7 @@ Result Run(MdmFieldMapTrace& trace, const mdm::RayInput& ray) {
   trace.SetScatteredEnergy(ray.energyMeV);
   trace.SendRay();
   trace.GetPositionAngleFirstWire(r.x, r.y, r.ax, r.ay);
+  r.stopped = IsStopped(r);
   return r;
 }
 
@@ -150,13 +153,8 @@ unsigned int ResolveProcessCount(const Json::Value& json,
     return 1;
   }
   unsigned int processes = 0;
-  if (json.isMember("compareProcesses")) {
-    const int raw = json["compareProcesses"].asInt();
-    processes = raw > 0 ? static_cast<unsigned int>(raw) : 0;
-  } else if (json.isMember("compareThreads")) {
-    const int raw = json["compareThreads"].asInt();
-    processes = raw > 0 ? static_cast<unsigned int>(raw) : 0;
-  }
+  processes =
+      mdm::GetNonnegativeInteger(json, "compareProcesses", processes);
   if (processes == 0) {
     processes = std::thread::hardware_concurrency();
     if (processes == 0) {
@@ -170,7 +168,7 @@ void WriteWorkerRows(const std::string& configPath,
                      std::size_t begin,
                      std::size_t end,
                      const std::string& outputPath) {
-  const Json::Value json = ReadJson(configPath);
+  const Json::Value json = mdm::ReadConfig(configPath);
   const Config cfg = ParseConfig(json);
   const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(json);
 
@@ -199,6 +197,8 @@ void ReadWorkerRows(const std::string& path, std::vector<Row>& rows) {
         rows[index].legacy.ax >> rows[index].legacy.ay >>
         rows[index].fieldMap.x >> rows[index].fieldMap.y >>
         rows[index].fieldMap.ax >> rows[index].fieldMap.ay;
+    rows[index].legacy.stopped = IsStopped(rows[index].legacy);
+    rows[index].fieldMap.stopped = IsStopped(rows[index].fieldMap);
   }
 }
 
@@ -341,8 +341,10 @@ void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
   const LinearFit fit = FitLine(legacy, fieldMap);
 
   TCanvas canvas((std::string("c_") + q.key).c_str(),
-                 (std::string(q.title) + " legacy vs field-map").c_str(), 900,
-                 900);
+                 (std::string(q.title) +
+                  " legacy vs field-map (both accepted)")
+                     .c_str(),
+                 900, 900);
   TPad top("top", "", 0.0, 0.32, 1.0, 1.0);
   TPad bottom("bottom", "", 0.0, 0.0, 1.0, 0.32);
   top.SetBottomMargin(0.03);
@@ -357,8 +359,9 @@ void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
 
   top.cd();
   TH2D topFrame("topFrame",
-                (std::string(q.title) + ";Legacy " + q.title + " [" + q.unit +
-                 "];FieldMap " + q.title + " [" + q.unit + "]")
+                (std::string(q.title) + " (both accepted);Legacy " + q.title +
+                 " [" + q.unit + "];FieldMap " + q.title + " [" + q.unit +
+                 "]")
                     .c_str(),
                 1, xyRange.first, xyRange.second, 1, xyRange.first,
                 xyRange.second);
@@ -421,7 +424,7 @@ std::string DefaultConfigPath() {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int Run(int argc, char* argv[]) {
   if (argc == 6 && std::string(argv[1]) == "--worker") {
     WriteWorkerRows(argv[2],
                     static_cast<std::size_t>(std::stoull(argv[3])),
@@ -431,14 +434,62 @@ int main(int argc, char* argv[]) {
   }
 
   const std::string configPath = argc > 1 ? argv[1] : DefaultConfigPath();
-  const Json::Value json = ReadJson(configPath);
+  const Json::Value json = mdm::ReadConfig(configPath);
   const Config cfg = ParseConfig(json);
   const std::vector<mdm::RayInput> rays = mdm::ParseRayInputs(json);
+  const mdm::RayScanCounts counts = mdm::CountRayScan(json, rays.size());
   const unsigned int processes = ResolveProcessCount(json, rays.size());
-  std::cerr << "Tracing " << rays.size() << " rays with " << processes
+  std::cerr << "Energy values: " << counts.energies << "\n"
+            << "Horizontal-angle values: " << counts.horizontalAngles << "\n"
+            << "Vertical-angle values: " << counts.verticalAngles << "\n"
+            << "Total rays: " << counts.rays << "\n"
+            << "Tracing " << rays.size() << " rays with " << processes
             << " process(es)\n";
   const std::vector<Row> rows =
       TraceRowsParallel(rays, cfg, argv[0], configPath, processes);
+
+  std::vector<Row> comparableRows;
+  comparableRows.reserve(rows.size());
+  std::size_t bothStopped = 0;
+  std::size_t legacyOnlyStopped = 0;
+  std::size_t fieldMapOnlyStopped = 0;
+  const Row* firstLegacyOnlyStopped = nullptr;
+  const Row* firstFieldMapOnlyStopped = nullptr;
+  for (const Row& row : rows) {
+    if (!row.legacy.stopped && !row.fieldMap.stopped) {
+      comparableRows.push_back(row);
+    } else if (row.legacy.stopped && row.fieldMap.stopped) {
+      ++bothStopped;
+    } else if (row.legacy.stopped) {
+      ++legacyOnlyStopped;
+      if (firstLegacyOnlyStopped == nullptr) {
+        firstLegacyOnlyStopped = &row;
+      }
+    } else {
+      ++fieldMapOnlyStopped;
+      if (firstFieldMapOnlyStopped == nullptr) {
+        firstFieldMapOnlyStopped = &row;
+      }
+    }
+  }
+  if (comparableRows.empty()) {
+    throw std::runtime_error("No rays reached the first wire in both transports");
+  }
+
+  std::cout << "Stop classification:\n"
+            << "  Both accepted: " << comparableRows.size() << "\n"
+            << "  Both stopped: " << bothStopped << "\n"
+            << "  Legacy-only stopped: " << legacyOnlyStopped << "\n"
+            << "  FieldMap-only stopped: " << fieldMapOnlyStopped << "\n";
+  const auto printFirstMismatch = [](const char* label, const Row* row) {
+    if (row != nullptr) {
+      std::cout << label << ": AngleX=" << row->ray.xDeg
+                << " deg, AngleY=" << row->ray.yDeg
+                << " deg, Energy=" << row->ray.energyMeV << " MeV\n";
+    }
+  };
+  printFirstMismatch("First legacy-only stop", firstLegacyOnlyStopped);
+  printFirstMismatch("First FieldMap-only stop", firstFieldMapOnlyStopped);
 
   const std::vector<Quantity> quantities{
       {"X1", "X", "cm", [](const Result& r) { return r.x; }},
@@ -450,25 +501,39 @@ int main(int argc, char* argv[]) {
   TFile output("Compare.root", "RECREATE");
   gStyle->SetOptStat(0);
   for (const Quantity& q : quantities) {
-    MakePlot(rows, q);
+    MakePlot(comparableRows, q);
   }
   output.Close();
 
-  std::cout << "Wrote Compare.root with 4 canvases and " << rows.size()
-            << " rays using " << processes << " process(es)\n";
-  std::cout << "Residual convention: Legacy - FieldMap\n";
+  std::cout << "Wrote Compare.root with 4 canvases and "
+            << comparableRows.size()
+            << " rays accepted by both transports using " << processes
+            << " process(es)\n";
+  std::cout << "Residual convention: Legacy - FieldMap\n"
+            << "Residual statistics include only rays accepted by both "
+               "transports.\n";
   std::cout << std::fixed << std::setprecision(6);
   for (const Quantity& q : quantities) {
     double sumSq = 0.0;
     double maxAbs = 0.0;
-    for (const Row& row : rows) {
+    for (const Row& row : comparableRows) {
       const double residual = q.value(row.legacy) - q.value(row.fieldMap);
       sumSq += residual * residual;
       maxAbs = std::max(maxAbs, std::abs(residual));
     }
     std::cout << std::setw(8) << q.key << " RMS="
-              << std::sqrt(sumSq / static_cast<double>(rows.size()))
+              << std::sqrt(sumSq /
+                           static_cast<double>(comparableRows.size()))
               << " MaxAbs=" << maxAbs << " " << q.unit << "\n";
   }
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+  try {
+    return Run(argc, argv);
+  } catch (const std::exception& error) {
+    std::cerr << "ERROR: " << error.what() << "\n";
+    return 1;
+  }
 }

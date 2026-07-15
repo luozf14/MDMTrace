@@ -51,11 +51,12 @@ bool ToDouble(const std::string& text, double& value) {
 }
 
 void CheckIonNumbers(int massNumber, int atomicNumber, int chargeState) {
-  if (massNumber <= 0 || atomicNumber <= 0 || chargeState <= 0) {
-    throw std::runtime_error("scatteredIon requires positive A, Z, and q");
+  if (massNumber <= 0 || atomicNumber < 0 || massNumber < atomicNumber) {
+    throw std::runtime_error(
+        "scatteredIon requires A > 0, Z >= 0, and A >= Z");
   }
-  if (chargeState > atomicNumber) {
-    throw std::runtime_error("scatteredIon chargeState cannot exceed Z");
+  if (chargeState < 0 || chargeState > atomicNumber) {
+    throw std::runtime_error("scatteredIon requires 0 <= Q <= Z");
   }
 }
 

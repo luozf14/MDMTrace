@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -88,26 +87,6 @@ inline void AppendLegacyAngles(const Json::Value& value,
   }
 }
 
-inline void AppendAnglePairs(const Json::Value& value,
-                             std::vector<RayInput>& rays) {
-  if (!value.isArray()) {
-    throw std::runtime_error("scatteredAnglePairs must be an array");
-  }
-  for (Json::ArrayIndex index = 0; index < value.size(); ++index) {
-    const Json::Value& pair = value[index];
-    if (!pair.isArray() || pair.size() != 2u) {
-      std::ostringstream message;
-      message << "scatteredAnglePairs[" << index
-              << "] must be [xDeg, yDeg]";
-      throw std::runtime_error(message.str());
-    }
-    RayInput ray;
-    ray.xDeg = RequireNumber(pair[0u], "scatteredAnglePairs x angle");
-    ray.yDeg = RequireNumber(pair[1u], "scatteredAnglePairs y angle");
-    rays.push_back(ray);
-  }
-}
-
 inline void AppendAngleGrid(const Json::Value& value,
                             std::vector<RayInput>& rays) {
   if (!value.isObject()) {
@@ -139,8 +118,17 @@ inline void AppendAngleGrid(const Json::Value& value,
 }
 
 inline std::vector<double> ParseEnergies(const Json::Value& config) {
+  if (config.isMember("scatteredEnergy")) {
+    const double referenceEnergy =
+        RequireNumber(config["scatteredEnergy"], "scatteredEnergy");
+    if (referenceEnergy < 0.0) {
+      throw std::runtime_error("scatteredEnergy must not be negative");
+    }
+  }
   if (!config.isMember("scatteredEnergyGrid")) {
-    return {RequireNumber(config["scatteredEnergy"], "scatteredEnergy")};
+    const double energy =
+        RequireNumber(config["scatteredEnergy"], "scatteredEnergy");
+    return {energy};
   }
 
   const Json::Value& grid = config["scatteredEnergyGrid"];
@@ -152,7 +140,43 @@ inline std::vector<double> ParseEnergies(const Json::Value& config) {
   const double eMax = RequireNumber(grid["eMax"], "scatteredEnergyGrid eMax");
   const double eStep =
       RequireNumber(grid["eStep"], "scatteredEnergyGrid eStep");
+  if (eMin < 0.0) {
+    throw std::runtime_error("scatteredEnergyGrid eMin must not be negative");
+  }
   return BuildGridAxis(eMin, eMax, eStep, "scatteredEnergyGrid", "e");
+}
+
+struct RayScanCounts {
+  std::size_t energies = 0;
+  std::size_t horizontalAngles = 0;
+  std::size_t verticalAngles = 0;
+  std::size_t rays = 0;
+};
+
+inline RayScanCounts CountRayScan(const Json::Value& config,
+                                  std::size_t rayCount) {
+  RayScanCounts counts;
+  counts.energies = ParseEnergies(config).size();
+  counts.rays = rayCount;
+  if (config.isMember("scatteredAngleGrid")) {
+    const Json::Value& grid = config["scatteredAngleGrid"];
+    counts.horizontalAngles =
+        BuildGridAxis(RequireNumber(grid["xMin"], "scatteredAngleGrid xMin"),
+                      RequireNumber(grid["xMax"], "scatteredAngleGrid xMax"),
+                      RequireNumber(grid["xStep"], "scatteredAngleGrid xStep"),
+                      "scatteredAngleGrid", "x")
+            .size();
+    counts.verticalAngles =
+        BuildGridAxis(RequireNumber(grid["yMin"], "scatteredAngleGrid yMin"),
+                      RequireNumber(grid["yMax"], "scatteredAngleGrid yMax"),
+                      RequireNumber(grid["yStep"], "scatteredAngleGrid yStep"),
+                      "scatteredAngleGrid", "y")
+            .size();
+  } else {
+    counts.horizontalAngles = rayCount / counts.energies;
+    counts.verticalAngles = counts.horizontalAngles == 0 ? 0 : 1;
+  }
+  return counts;
 }
 
 inline std::vector<RayInput> ParseRayInputs(const Json::Value& config) {
@@ -160,16 +184,13 @@ inline std::vector<RayInput> ParseRayInputs(const Json::Value& config) {
   if (config.isMember("scatteredAngles")) {
     AppendLegacyAngles(config["scatteredAngles"], angleRays);
   }
-  if (config.isMember("scatteredAnglePairs")) {
-    AppendAnglePairs(config["scatteredAnglePairs"], angleRays);
-  }
   if (config.isMember("scatteredAngleGrid")) {
     AppendAngleGrid(config["scatteredAngleGrid"], angleRays);
   }
   if (angleRays.empty()) {
     throw std::runtime_error(
-        "No input rays configured. Provide scatteredAngles, "
-        "scatteredAnglePairs, or scatteredAngleGrid.");
+        "No input rays configured. Provide scatteredAngles or "
+        "scatteredAngleGrid.");
   }
 
   const std::vector<double> energies = ParseEnergies(config);
