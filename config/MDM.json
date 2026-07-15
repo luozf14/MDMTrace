@@ -51,25 +51,25 @@
     },
 
     "method": "fit",
-    "order": 1,                    // supported polynomial order: 1 through 5
+    "order": 5,                    // supported polynomial order: 1 through 5
     "threads": 0,                  // 0 means use the program's automatic choice
     "maxRays": 100000000,          // integer ray limit
 
     "fitGrid": {
-      "xMinMm": -5.0,              // mm
-      "xMaxMm": 5.0,               // mm
+      "xMinMm": -2.5,              // mm
+      "xMaxMm": 2.5,               // mm
       "xStepMm": 1.0,              // mm
 
-      "thetaXMinMrad": -34.5,      // mrad
-      "thetaXMaxMrad": 34.5,       // mrad
+      "thetaXMinMrad": -17.25,      // mrad
+      "thetaXMaxMrad": 17.25,       // mrad
       "thetaXStepMrad": 2.5,       // mrad
 
-      "yMinMm": -5.0,              // mm
-      "yMaxMm": 5.0,               // mm
+      "yMinMm": -2.5,              // mm
+      "yMaxMm": 2.5,               // mm
       "yStepMm": 1.0,              // mm
 
-      "thetaYMinMrad": -34.5,      // mrad
-      "thetaYMaxMrad": 34.5,       // mrad
+      "thetaYMinMrad": -17.25,      // mrad
+      "thetaYMaxMrad": 17.25,       // mrad
       "thetaYStepMrad": 2.5,       // mrad
 
       // Percent momentum deviation:
