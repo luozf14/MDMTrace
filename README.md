@@ -28,7 +28,7 @@ Run normal commands from `build/`:
 
 ```bash
 cd build
-./FindMdmField ../config/MDMFindField.json
+./FindMdmField ../config/FindField.json
 ./MdmFieldMapGenerator ../config/MDM.json
 ./MdmTraceExample ../config/MDM.json
 ./MdmFieldMapTraceExample ../config/MDM.json
@@ -52,8 +52,8 @@ Relative map paths and output paths are resolved from the process working direct
 The three supported configuration files are:
 
 - `config/MDM.json`: normal tracing, generation, and ion-optics fitting;
-- `config/MDMScan.json`: self-contained energy/angle scans and comparison;
-- `config/MDMFindField.json`: field tuning.
+- `config/Compare.json`: self-contained energy/angle scans and comparison;
+- `config/FindField.json`: field tuning.
 
 They are JSON-with-comments files and retain the `.json` extension. Comments beside dimensional values state their units and physics meaning. `usingProbe` must be the JSON Boolean `true` or `false`; numeric `0` and `1` are rejected.
 

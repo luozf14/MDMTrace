@@ -13,7 +13,7 @@ ROOT controls only `Compare` and `GenerateIonOptics`. A machine without ROOT sho
 
 ```bash
 cd build
-./FindMdmField ../config/MDMFindField.json
+./FindMdmField ../config/FindField.json
 ./MdmFieldMapGenerator ../config/MDM.json
 ./MdmTraceExample ../config/MDM.json
 ./MdmFieldMapTraceExample ../config/MDM.json
@@ -30,9 +30,9 @@ The map tracer loads all four required files and fails clearly for a wrong map r
 ## Scan comparison
 
 ```bash
-./MdmTraceExample ../config/MDMScan.json
-./MdmFieldMapTraceExample ../config/MDMScan.json
-./Compare ../config/MDMScan.json
+./MdmTraceExample ../config/Compare.json
+./MdmFieldMapTraceExample ../config/Compare.json
+./Compare ../config/Compare.json
 ```
 
 Before tracing, each scan path reports:

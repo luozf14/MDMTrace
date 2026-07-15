@@ -5,8 +5,8 @@ MDMTrace uses three self-contained JSON-with-comments files. They keep the `.jso
 The checked-in files are the canonical, readable examples:
 
 - `config/MDM.json` for normal tracing, map generation, and ion optics;
-- `config/MDMScan.json` for scan tracing and `Compare`;
-- `config/MDMFindField.json` for `FindMdmField`.
+- `config/Compare.json` for scan tracing and `Compare`;
+- `config/FindField.json` for `FindMdmField`.
 
 Comments may use `//`. `usingProbe` must be a JSON Boolean:
 
@@ -115,7 +115,7 @@ Every grid step must be positive and every minimum must be no greater than its m
 
 The configured `delta` values mean `100 * (p - p0) / p0`. Input `L` is not scanned; it is the formal longitudinal coordinate.
 
-## `config/MDMScan.json`
+## `config/Compare.json`
 
 The scan file contains its own magnet and ion settings. Its grids are:
 
@@ -140,7 +140,7 @@ Steps must be positive and ranges must be ordered. Endpoints are included; if re
 
 `scatteredAngles: [0.0]` remains the normal one-dimensional horizontal-angle form used by `config/MDM.json`.
 
-## `config/MDMFindField.json`
+## `config/FindField.json`
 
 ```jsonc
 "fieldFinder": {

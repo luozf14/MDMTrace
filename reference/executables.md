@@ -5,7 +5,7 @@ Run the normal commands from `build/`. Relative map paths are resolved from the 
 ## `FindMdmField`
 
 ```bash
-./FindMdmField ../config/MDMFindField.json
+./FindMdmField ../config/FindField.json
 ```
 
 This tool uses the legacy Fortran-backed RAYTRACE transport to tune one scalar dipole field. It starts from the 160 cm rigidity estimate, performs the existing coarse scan and golden-section refinement, and prints:
@@ -23,7 +23,7 @@ Field and probe values use at least 12 significant digits so they can be copied 
 
 ```bash
 ./MdmTraceExample ../config/MDM.json
-./MdmTraceExample ../config/MDMScan.json
+./MdmTraceExample ../config/Compare.json
 ```
 
 This is legacy RAYTRACE transport through the Fortran-linked `MdmTrace` library. Before tracing it reports scan dimensions and total rays. Each final ray uses this stable line format:
@@ -53,7 +53,7 @@ The four existing `key=value` metadata headers and binary payload layout are ret
 
 ```bash
 ./MdmFieldMapTraceExample ../config/MDM.json
-./MdmFieldMapTraceExample ../config/MDMScan.json
+./MdmFieldMapTraceExample ../config/Compare.json
 ```
 
 This executable uses the standalone C++ map reader and map transport. It does not link the legacy Fortran transport. It loads all four required map files, checks their roles and probe metadata, reports scan dimensions, and prints the same final-line format as `MdmTraceExample`.
@@ -64,7 +64,7 @@ ROOT is required to build this executable.
 
 ```bash
 ./Compare
-./Compare ../config/MDMScan.json
+./Compare ../config/Compare.json
 ```
 
 It traces the self-contained scan with both transports and writes `Compare.root`. `compareProcesses` is a nonnegative integer; zero selects the automatic CPU-count choice. Before tracing, the program reports the number of energy, horizontal-angle, and vertical-angle values and the total ray count.

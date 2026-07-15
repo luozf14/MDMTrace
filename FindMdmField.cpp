@@ -257,7 +257,7 @@ void PrintResult(const Config& cfg,
 
 int Run(int argc, char* argv[]) {
   const std::string configPath =
-      argc > 1 ? argv[1] : "../config/MDMFindField.json";
+      argc > 1 ? argv[1] : "../config/FindField.json";
   const Config cfg = ParseConfig(mdm::ReadConfig(configPath));
   CheckConfig(cfg);
 

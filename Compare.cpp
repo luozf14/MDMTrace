@@ -419,7 +419,7 @@ void MakePlot(const std::vector<Row>& rows, const Quantity& q) {
 }
 
 std::string DefaultConfigPath() {
-  return std::string(MdmTrace_SOURCE_DIR) + "/config/MDMScan.json";
+  return std::string(MdmTrace_SOURCE_DIR) + "/config/Compare.json";
 }
 
 }  // namespace
